@@ -3,9 +3,10 @@ Entry point for the Lab Evaluation Application backend.
 Initializes FastAPI app, includes API routers, and configures middleware.
 """
 
+import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1 import admin, auth, student, ta, user
@@ -58,6 +59,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def add_request_id(request: Request, call_next):
+    request.state.request_id = str(uuid.uuid4())
+    return await call_next(request)
 
 
 # API Routers
