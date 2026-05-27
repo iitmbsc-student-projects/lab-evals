@@ -66,6 +66,14 @@
         >
           Evaluations
         </RouterLink>
+        <RouterLink
+          to="/admin/audit"
+          class="px-4 py-2 rounded-md text-sm font-medium transition-colors"
+          active-class="bg-zinc-800 text-white"
+          :class="$route.path === '/admin/audit' ? '' : 'text-zinc-700 hover:bg-zinc-100'"
+        >
+          Audit
+        </RouterLink>
       </div>
     </nav>
     <main class="p-6 max-w-7xl mx-auto">

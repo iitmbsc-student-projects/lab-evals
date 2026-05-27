@@ -59,3 +59,29 @@ export const updateEvaluation = async (id: number, body: EvaluationUpdate) =>
   (await api.put(`/admin/evaluations/${id}`, body)).data
 export const deleteEvaluation = async (id: number) =>
   (await api.delete(`/admin/evaluations/${id}`)).data
+
+// Audit
+export interface AuditExportParams {
+  from_date?: string
+  to_date?: string
+  actor_user_id?: number
+  action?: string
+  resource_type?: string
+}
+
+export async function exportAuditCsv(params: AuditExportParams): Promise<void> {
+  const response = await api.get('/admin/audit/export.csv', {
+    params,
+    responseType: 'blob',
+  })
+
+  const disposition = response.headers['content-disposition'] as string | undefined
+  const filename = disposition?.match(/filename="([^"]+)"/)?.[1] ?? 'audit.csv'
+
+  const url = URL.createObjectURL(response.data as Blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  anchor.click()
+  URL.revokeObjectURL(url)
+}
