@@ -66,7 +66,8 @@ export interface EnrollmentCreate {
   subject_id: number
 }
 
-export type Marking = 'done' | 'partial' | 'not_done'
+// Evaluation rating: integer 1-5 (5 = best).
+export type Marking = 1 | 2 | 3 | 4 | 5
 
 export interface EvaluationResponse {
   id: number

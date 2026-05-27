@@ -40,12 +40,10 @@
         <td>{{ getQuestionSubject(evaluation.question_id) }}</td>
         <td>{{ getQuestionText(evaluation.question_id) }}</td>
         <td>{{ getUserName(evaluation.ta_id) }}</td>
-        <td v-if="editId !== evaluation.id">{{ evaluation.marking }}</td>
+        <td v-if="editId !== evaluation.id">{{ evaluation.marking }} / 5</td>
         <td v-else>
-          <AppSelect v-model="editMarking">
-            <option value="done">done</option>
-            <option value="partial">partial</option>
-            <option value="not_done">not_done</option>
+          <AppSelect v-model.number="editMarking">
+            <option v-for="n in 5" :key="n" :value="n">{{ n }} / 5</option>
           </AppSelect>
         </td>
         <td v-if="editId !== evaluation.id">{{ evaluation.remarks }}</td>
@@ -151,10 +149,8 @@
             {{ user.name }} ({{ user.email }})
           </option>
         </AppSelect>
-        <AppSelect v-model="newMarking" label="Marking" required class="mb-3">
-          <option value="done">done</option>
-          <option value="partial">partial</option>
-          <option value="not_done">not_done</option>
+        <AppSelect v-model.number="newMarking" label="Marking" required class="mb-3">
+          <option v-for="n in 5" :key="n" :value="n">{{ n }} / 5</option>
         </AppSelect>
         <AppInput v-model="newRemarks" placeholder="Remarks (optional)" label="Remarks" />
         <div class="flex gap-2 mt-6 justify-end">
@@ -202,10 +198,10 @@ const newStudentId = ref<number | null>(null)
 const newSubjectId = ref<number | null>(null)
 const newQuestionId = ref<number | null>(null)
 const newTaId = ref<number | null>(null)
-const newMarking = ref<Marking>('done')
+const newMarking = ref<Marking>(5)
 const newRemarks = ref('')
 const editId = ref<number | null>(null)
-const editMarking = ref<Marking>('done')
+const editMarking = ref<Marking>(5)
 const editRemarks = ref('')
 const filterSubjectId = ref<number | string>('')
 
@@ -291,7 +287,7 @@ async function createEvaluationHandler() {
   newSubjectId.value = null
   newQuestionId.value = null
   newTaId.value = null
-  newMarking.value = 'done'
+  newMarking.value = 5
   newRemarks.value = ''
   showCreate.value = false
   await load()
@@ -314,14 +310,14 @@ async function saveEdit(id: number) {
     remarks: editRemarks.value || null,
   })
   editId.value = null
-  editMarking.value = 'done'
+  editMarking.value = 5
   editRemarks.value = ''
   await load()
 }
 
 function cancelEdit() {
   editId.value = null
-  editMarking.value = 'done'
+  editMarking.value = 5
   editRemarks.value = ''
 }
 

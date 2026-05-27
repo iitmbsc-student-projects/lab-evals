@@ -2,16 +2,14 @@
 Pydantic schemas for Evaluation model.
 """
 
-from pydantic import BaseModel
-
-from app.constants.enums import Marking
+from pydantic import BaseModel, Field
 
 
 class EvaluationBase(BaseModel):
     student_id: int
     question_id: int
     ta_id: int
-    marking: Marking
+    marking: int = Field(ge=1, le=5)
     remarks: str | None = None
 
     class Config:
@@ -44,7 +42,7 @@ class StudentEvaluationResponse(BaseModel):
 class TAEvaluationBase(BaseModel):
     student_id: int
     question_id: int
-    marking: Marking
+    marking: int = Field(ge=1, le=5)
     remarks: str | None = None
 
 

@@ -1,6 +1,9 @@
 # Makefile for Lab Evaluation Application backend
 
-.PHONY: dev lint migrate makemigrations upgrade downgrade test
+.PHONY: install run up format lint check
+
+install:
+	uv sync
 
 # Run dev server
 run:
