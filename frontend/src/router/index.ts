@@ -21,6 +21,7 @@ const routes = [
       { path: 'users', component: () => import('../views/admin/UsersView.vue') },
       { path: 'enrollments', component: () => import('../views/admin/EnrollmentsView.vue') },
       { path: 'evaluations', component: () => import('../views/admin/EvaluationsView.vue') },
+      { path: 'audit', component: () => import('../views/admin/AuditView.vue') },
     ],
   },
   // TA

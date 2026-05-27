@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api.deps import get_current_user, require_role
 from app.constants.enums import UserRole
+from app.core.audit import AuditRecorder, get_audit_recorder, snapshot
 from app.core.database import SessionLocal
 from app.models.enrollment import Enrollment
 from app.models.evaluation import Evaluation
@@ -86,6 +87,7 @@ def list_questions():
 def create_evaluation(
     evaluation: TAEvaluationCreate,
     current_user: User = Depends(get_current_user),
+    audit: AuditRecorder = Depends(get_audit_recorder),
 ):
     db = SessionLocal()
     try:
@@ -138,6 +140,15 @@ def create_evaluation(
             remarks=evaluation.remarks,
         )
         db.add(db_obj)
+        db.flush()
+        audit.record(
+            db,
+            action="evaluation.create",
+            resource_type="evaluation",
+            resource_id=db_obj.id,
+            request_body=evaluation.model_dump(),
+            after_state=snapshot(db_obj),
+        )
         db.commit()
         db.refresh(db_obj)
         return db_obj
@@ -197,6 +208,7 @@ def update_evaluation(
     evaluation_id: int,
     evaluation: TAEvaluationUpdate,
     current_user: User = Depends(get_current_user),
+    audit: AuditRecorder = Depends(get_audit_recorder),
 ):
     db = SessionLocal()
     try:
@@ -210,11 +222,21 @@ def update_evaluation(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Evaluation not found or not permitted",
             )
+        before = snapshot(db_obj)
         db_obj.student_id = evaluation.student_id
         db_obj.question_id = evaluation.question_id
         db_obj.marking = evaluation.marking
         if evaluation.remarks is not None:
             db_obj.remarks = evaluation.remarks
+        audit.record(
+            db,
+            action="evaluation.update",
+            resource_type="evaluation",
+            resource_id=db_obj.id,
+            request_body=evaluation.model_dump(),
+            before_state=before,
+            after_state=snapshot(db_obj),
+        )
         db.commit()
         db.refresh(db_obj)
         return db_obj
@@ -227,7 +249,9 @@ def update_evaluation(
 
 @router.delete("/evaluations/{evaluation_id}")
 def delete_evaluation(
-    evaluation_id: int, current_user: User = Depends(get_current_user)
+    evaluation_id: int,
+    current_user: User = Depends(get_current_user),
+    audit: AuditRecorder = Depends(get_audit_recorder),
 ):
     db = SessionLocal()
     try:
@@ -241,7 +265,15 @@ def delete_evaluation(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Evaluation not found or not permitted",
             )
+        before = snapshot(db_obj)
         db.delete(db_obj)
+        audit.record(
+            db,
+            action="evaluation.delete",
+            resource_type="evaluation",
+            resource_id=evaluation_id,
+            before_state=before,
+        )
         db.commit()
         return {}, status.HTTP_204_NO_CONTENT
     finally:
