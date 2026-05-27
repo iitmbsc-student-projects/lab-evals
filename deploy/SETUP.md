@@ -85,7 +85,7 @@ gcloud sql instances create "$SQL_INSTANCE" \
 gcloud sql databases create "$SQL_DB" --instance="$SQL_INSTANCE"
 
 # Generate a password and stash it locally for the secret step below
-SQL_PASSWORD=$(openssl rand -base64 32 | tr -d '/+=' | head -c 32)
+SQL_PASSWORD=$(openssl rand -hex 16)
 gcloud sql users create "$SQL_USER" \
   --instance="$SQL_INSTANCE" \
   --password="$SQL_PASSWORD"

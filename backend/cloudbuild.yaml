@@ -20,8 +20,8 @@ substitutions:
   _SQL_INSTANCE: ${PROJECT_ID}:asia-south1:lab-evals-db
   _RUNTIME_SA: lab-evals-backend-sa@${PROJECT_ID}.iam.gserviceaccount.com
   _FRONTEND_ORIGIN: https://lab-evals.web.app
-  _ADMIN_EMAIL: sayan@study.iitm.ac.in
-  _ADMIN_NAME: Sayan
+  _ADMIN_EMAIL: admin@example.com
+  _ADMIN_NAME: Admin
 
 images:
   - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/backend:${SHORT_SHA}
@@ -79,4 +79,4 @@ steps:
         set -euo pipefail
         URL=$(gcloud run services describe ${_SERVICE} --region=${_REGION} --format='value(status.url)')
         echo "Backend deployed at: $URL"
-        curl -sf "$URL/healthz" | tee /dev/stderr
+        curl --retry 5 --retry-connrefused --retry-delay 2 -sf "$URL/healthz" | tee /dev/stderr
