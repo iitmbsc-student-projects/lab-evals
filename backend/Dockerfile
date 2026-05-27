@@ -18,8 +18,8 @@ RUN uv pip install --system -r pyproject.toml
 # Copy application code
 COPY . .
 
-# Expose the application port
+# Expose the application port (Cloud Run injects $PORT; default 8000 for local)
 EXPOSE 8000
 
-# Run the uvicorn server
-CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run the uvicorn server. Shell form so ${PORT:-8000} expands at runtime.
+CMD exec python -m uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}

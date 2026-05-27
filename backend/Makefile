@@ -1,6 +1,6 @@
 # Makefile for Lab Evaluation Application backend
 
-.PHONY: install run up format lint check
+.PHONY: install run up format lint check deploy
 
 install:
 	uv sync
@@ -20,3 +20,7 @@ lint:
 	uv run -m ruff check --fix app
 
 check: format lint
+
+# Build and deploy to Cloud Run via Cloud Build. See deploy/SETUP.md.
+deploy:
+	gcloud builds submit --config=cloudbuild.yaml .
