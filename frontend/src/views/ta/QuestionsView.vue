@@ -4,10 +4,10 @@
 -->
 <template>
   <div>
-    <div class="flex justify-between items-center mb-4 gap-4">
+    <div class="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center mb-4">
       <h2 class="text-xl font-semibold">Questions</h2>
-      <div class="flex gap-2 items-center shrink-0">
-        <AppSelect v-model="filterSubjectId" class="w-48">
+      <div class="flex gap-2 items-center w-full sm:w-auto shrink-0">
+        <AppSelect v-model="filterSubjectId" class="w-full sm:w-48">
           <option value="">All Subjects</option>
           <option v-for="subject in subjects" :key="subject.id" :value="subject.id">
             {{ subject.name }}
