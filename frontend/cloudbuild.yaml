@@ -6,12 +6,6 @@
 # VITE_API_BASE and VITE_GOOGLE_CLIENT_ID are pulled from Secret Manager at build
 # time and baked into the static bundle. Update the secret + redeploy to rotate.
 #
-# Substitutions:
-#   _PROJECT_ALIAS    Firebase project alias to deploy to  (default: $PROJECT_ID)
-
-substitutions:
-  _PROJECT_ALIAS: ${PROJECT_ID}
-
 availableSecrets:
   secretManager:
     - versionName: projects/${PROJECT_ID}/secrets/vite-api-base/versions/latest
@@ -52,5 +46,5 @@ steps:
         set -euo pipefail
         npx -y firebase-tools@13 deploy \
           --only hosting \
-          --project=${_PROJECT_ALIAS} \
+          --project=${PROJECT_ID} \
           --non-interactive

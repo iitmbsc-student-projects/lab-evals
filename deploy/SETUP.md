@@ -139,9 +139,15 @@ for s in jwt-secret google-client-id database-url; do
     --role="roles/secretmanager.secretAccessor"
 done
 
-# Cloud Build SA
+# Cloud Build builder SA.
+#
+# IMPORTANT: As of mid-2024, newly created projects default to using the
+# Compute Engine default SA for Cloud Build executions, NOT the legacy
+# ${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com. We grant on the Compute
+# default SA below; if your project still uses the legacy CB SA (older
+# projects), substitute that email and re-run the grants.
 PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')
-CB_SA="${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com"
+CB_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
 
 # Backend pipeline needs to push images, deploy Cloud Run, act-as runtime SA
 gcloud projects add-iam-policy-binding "$PROJECT_ID" \
@@ -150,6 +156,10 @@ gcloud projects add-iam-policy-binding "$PROJECT_ID" \
   --member="serviceAccount:${CB_SA}" --role="roles/run.admin"
 gcloud iam service-accounts add-iam-policy-binding "$RUNTIME_SA_EMAIL" \
   --member="serviceAccount:${CB_SA}" --role="roles/iam.serviceAccountUser"
+
+# Cloud Build writes logs; without this you'll see "logs bucket" errors.
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:${CB_SA}" --role="roles/logging.logWriter"
 
 # Frontend pipeline needs to read VITE_* secrets and deploy Firebase Hosting
 for s in vite-api-base google-client-id; do

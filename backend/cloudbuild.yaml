@@ -4,21 +4,24 @@
 # Automatic:       wire a Cloud Build GitHub trigger to this file on push to master.
 #
 # Substitutions (override with --substitutions=_KEY=value):
-#   _REGION             deploy region                 (default: asia-south1)
-#   _AR_REPO            Artifact Registry repo name   (default: lab-evals)
-#   _SERVICE            Cloud Run service name        (default: lab-evals-backend)
-#   _SQL_INSTANCE       Cloud SQL connection name     (default: $PROJECT_ID:asia-south1:lab-evals-db)
-#   _RUNTIME_SA         backend runtime service acct  (default: lab-evals-backend-sa@$PROJECT_ID.iam.gserviceaccount.com)
-#   _FRONTEND_ORIGIN    CORS allowlist                (default: https://lab-evals.web.app)
-#   _ADMIN_EMAIL        bootstrap admin email
-#   _ADMIN_NAME         bootstrap admin display name
+#   _REGION              deploy region                  (default: asia-south1)
+#   _AR_REPO             Artifact Registry repo name    (default: lab-evals)
+#   _SERVICE             Cloud Run service name         (default: lab-evals-backend)
+#   _SQL_INSTANCE_NAME   Cloud SQL instance name        (default: lab-evals-db)
+#   _RUNTIME_SA_NAME     backend runtime SA short name  (default: lab-evals-backend-sa)
+#   _FRONTEND_ORIGIN     CORS allowlist                 (default: https://lab-evals.web.app)
+#   _ADMIN_EMAIL         bootstrap admin email
+#   _ADMIN_NAME          bootstrap admin display name
+#
+# NOTE: Cloud Build does not recurse-substitute defaults in this block, so
+# ${PROJECT_ID} is composed at usage sites (in the steps below), not here.
 
 substitutions:
   _REGION: asia-south1
   _AR_REPO: lab-evals
   _SERVICE: lab-evals-backend
-  _SQL_INSTANCE: ${PROJECT_ID}:asia-south1:lab-evals-db
-  _RUNTIME_SA: lab-evals-backend-sa@${PROJECT_ID}.iam.gserviceaccount.com
+  _SQL_INSTANCE_NAME: lab-evals-db
+  _RUNTIME_SA_NAME: lab-evals-backend-sa
   _FRONTEND_ORIGIN: https://lab-evals.web.app
   _ADMIN_EMAIL: admin@example.com
   _ADMIN_NAME: Admin
@@ -58,8 +61,8 @@ steps:
       - --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/backend:${BUILD_ID}
       - --region=${_REGION}
       - --platform=managed
-      - --service-account=${_RUNTIME_SA}
-      - --add-cloudsql-instances=${_SQL_INSTANCE}
+      - --service-account=${_RUNTIME_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com
+      - --add-cloudsql-instances=${PROJECT_ID}:${_REGION}:${_SQL_INSTANCE_NAME}
       - --set-secrets=JWT_SECRET=jwt-secret:latest,GOOGLE_CLIENT_ID=google-client-id:latest,DATABASE_URL=database-url:latest
       - --set-env-vars=ENV=production,JWT_ALGORITHM=HS256,JWT_EXPIRES_MINUTES=60,ADMIN_EMAIL=${_ADMIN_EMAIL},ADMIN_NAME=${_ADMIN_NAME},FRONTEND_ORIGIN=${_FRONTEND_ORIGIN}
       - --allow-unauthenticated
