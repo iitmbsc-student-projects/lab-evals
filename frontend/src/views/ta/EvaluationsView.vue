@@ -100,18 +100,15 @@
             </svg>
           </button>
         </div>
-        <AppSelect
+        <AppCombobox
           v-model="newStudentId"
+          :options="studentOptions"
           @change="onStudentChange"
           label="Select Student"
+          placeholder="Search student by name or email..."
           required
           class="mb-3"
-        >
-          <option :value="null">-- Select Student --</option>
-          <option v-for="user in users" :key="user.id" :value="user.id">
-            {{ user.name }} ({{ user.email }})
-          </option>
-        </AppSelect>
+        />
         <AppSelect
           v-model="newSubjectId"
           :disabled="!newStudentId"
@@ -166,6 +163,7 @@ import { ref, onMounted, computed } from 'vue'
 import AppButton from '@/components/common/AppButton.vue'
 import AppInput from '@/components/common/AppInput.vue'
 import AppSelect from '@/components/common/AppSelect.vue'
+import AppCombobox from '@/components/common/AppCombobox.vue'
 import AppTable from '@/components/common/AppTable.vue'
 import {
   getEvaluations,
@@ -241,6 +239,11 @@ const filteredEvaluations = computed(() => {
     return question?.subject_id === Number(filterSubjectId.value)
   })
 })
+
+// Options for the searchable student combobox
+const studentOptions = computed(() =>
+  users.value.map((u) => ({ value: u.id, label: `${u.name} (${u.email})` })),
+)
 
 // Get subjects that both the student and TA are enrolled in
 const filteredSubjectsForStudent = computed(() => {
