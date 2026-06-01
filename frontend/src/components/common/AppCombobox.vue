@@ -185,10 +185,12 @@ function onKeydown(event: KeyboardEvent) {
         open()
         return
       }
-      highlightedIndex.value = Math.min(
-        highlightedIndex.value + 1,
-        filteredOptions.value.length - 1,
-      )
+      if (filteredOptions.value.length > 0) {
+        highlightedIndex.value = Math.min(
+          highlightedIndex.value + 1,
+          filteredOptions.value.length - 1,
+        )
+      }
       break
     case 'ArrowUp':
       event.preventDefault()
@@ -213,8 +215,9 @@ function onKeydown(event: KeyboardEvent) {
   }
 }
 
-// Keep the highlighted option scrolled into view.
-watch(highlightedIndex, async () => {
+// Keep the highlighted option scrolled into view — also on open, when the
+// highlighted index may be unchanged from the previous time the list closed.
+watch([highlightedIndex, isOpen], async () => {
   if (!isOpen.value) return
   await nextTick()
   const item = listEl.value?.children[highlightedIndex.value] as HTMLElement | undefined
