@@ -4,12 +4,12 @@
 -->
 <template>
   <div>
-    <div class="flex justify-between items-center mb-6 gap-4">
+    <div class="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center mb-6">
       <div>
         <h2 class="text-2xl font-bold text-zinc-900">Evaluations</h2>
         <p class="text-sm text-zinc-600 mt-1">Manage your student evaluations</p>
       </div>
-      <AppButton @click="showCreate = true">Add Evaluation</AppButton>
+      <AppButton class="shrink-0" @click="showCreate = true">Add Evaluation</AppButton>
     </div>
     <!-- Subject Filter -->
     <div class="mb-4">
@@ -82,7 +82,7 @@
       class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
     >
       <div
-        class="bg-white p-6 rounded-lg shadow-xl w-full max-w-lg animate-in fade-in zoom-in duration-200"
+        class="bg-white p-6 rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-auto animate-in fade-in zoom-in duration-200"
       >
         <div class="flex justify-between items-center mb-4">
           <h3 class="text-lg font-semibold text-zinc-900">Add Evaluation</h3>

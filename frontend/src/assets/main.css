@@ -47,6 +47,16 @@ html {
   scroll-behavior: smooth;
 }
 
+/* Hide scrollbar for horizontally-scrollable strips (e.g. mobile tab bars)
+   while keeping scroll behaviour intact. */
+.no-scrollbar {
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
+}
+
 /* Custom scrollbar styling */
 ::-webkit-scrollbar {
   width: 8px;
