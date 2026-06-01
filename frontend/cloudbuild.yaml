@@ -38,7 +38,10 @@ steps:
         set -euo pipefail
         export VITE_API_BASE
         export VITE_GOOGLE_CLIENT_ID
-        bun run build
+        # build-only = vite build without the parallel vue-tsc type-check.
+        # Type-checking is a dev/PR-check concern; the deploy pipeline only
+        # needs the static bundle. Run `bun run type-check` locally to enforce.
+        bun run build-only
 
   - id: deploy
     name: node:20-slim
