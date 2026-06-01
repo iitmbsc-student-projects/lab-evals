@@ -76,6 +76,7 @@ gcloud artifacts repositories create "$AR_REPO" \
 ```bash
 gcloud sql instances create "$SQL_INSTANCE" \
   --database-version=POSTGRES_16 \
+  --edition=ENTERPRISE \
   --tier=db-f1-micro \
   --region="$REGION" \
   --storage-size=10GB \
