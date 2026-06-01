@@ -9,7 +9,9 @@
         <h2 class="text-2xl font-bold text-zinc-900">Evaluations</h2>
         <p class="text-sm text-zinc-600 mt-1">Manage all evaluations (admin override)</p>
       </div>
-      <AppButton class="shrink-0" @click="showCreate = true">Add Evaluation</AppButton>
+      <AppButton class="self-start sm:self-auto shrink-0" @click="showCreate = true"
+        >Add Evaluation</AppButton
+      >
     </div>
     <!-- Subject Filter -->
     <div class="mb-4">
