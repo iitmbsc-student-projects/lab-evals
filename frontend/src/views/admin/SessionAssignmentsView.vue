@@ -132,7 +132,7 @@
           <p class="font-medium text-zinc-700">
             Session:
             <span class="text-zinc-900">{{
-              selectedSessionId ? sessionLabel(labSessions.find((s) => s.id === selectedSessionId)!) : ''
+              selectedSessionLabel
             }}</span>
           </p>
         </div>
@@ -312,6 +312,12 @@ function getUserName(id: number) {
 function getUserEmail(id: number) {
   return users.value.find((u) => u.id === id)?.email || ''
 }
+
+const selectedSessionLabel = computed(() => {
+  if (!selectedSessionId.value) return ''
+  const session = labSessions.value.find((s) => s.id === selectedSessionId.value)
+  return session ? sessionLabel(session) : String(selectedSessionId.value)
+})
 
 const selectedSessionAssignments = computed(() => {
   if (!selectedSessionId.value) return []

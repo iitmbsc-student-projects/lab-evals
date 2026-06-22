@@ -104,7 +104,13 @@
             </svg>
           </button>
         </div>
-        <AppSelect v-model="newLabSessionId" label="Lab Session" required class="mb-3">
+        <AppSelect
+          v-model="newLabSessionId"
+          label="Lab Session"
+          required
+          class="mb-3"
+          @change="onSessionChange"
+        >
           <option :value="null">-- Select Lab Session --</option>
           <option v-for="session in labSessions" :key="session.id" :value="session.id">
             {{ getSessionLabel(session.id) }}
@@ -112,48 +118,36 @@
         </AppSelect>
         <AppCombobox
           v-model="newStudentId"
-          :options="studentOptions"
-          @change="onStudentChange"
+          :options="sessionStudentOptions"
+          :disabled="!newLabSessionId || sessionRosterLoading"
           label="Student"
           placeholder="Search student by name or email..."
           required
           class="mb-3"
         />
-        <AppSelect
-          v-model="newSubjectId"
-          :disabled="!newStudentId"
-          @change="onSubjectChange"
-          label="Subject"
+        <AppCombobox
+          v-model="newTaId"
+          :options="sessionTaOptions"
+          :disabled="!newLabSessionId || sessionRosterLoading"
+          label="TA"
+          placeholder="Search TA by name or email..."
           required
           class="mb-3"
-        >
-          <option :value="null">-- Select Subject --</option>
-          <option
-            v-for="subject in filteredSubjectsForStudent"
-            :key="subject.id"
-            :value="subject.id"
-          >
-            {{ subject.name }}
-          </option>
-        </AppSelect>
+        />
         <AppSelect
           v-model="newQuestionId"
-          :disabled="!newSubjectId"
+          :disabled="!newLabSessionId"
           label="Question"
           required
           class="mb-3"
         >
+          <option :value="null">-- Select Question --</option>
           <option
-            v-for="question in filteredQuestionsForSubject"
+            v-for="question in sessionQuestionOptions"
             :key="question.id"
             :value="question.id"
           >
             {{ question.text }}
-          </option>
-        </AppSelect>
-        <AppSelect v-model="newTaId" label="TA" required class="mb-3">
-          <option v-for="user in nonAdminUsers" :key="user.id" :value="user.id">
-            {{ user.name }} ({{ user.email }})
           </option>
         </AppSelect>
         <AppSelect v-model.number="newMarking" label="Marking" required class="mb-3">
@@ -186,6 +180,7 @@ import {
   getQuestions,
   getSubjects,
   getLabSessions,
+  getSessionAssignments,
 } from '../../api/admin'
 import type {
   EvaluationResponse,
@@ -194,6 +189,7 @@ import type {
   Marking,
   SubjectResponse,
   LabSession,
+  SessionAssignment,
 } from '../../types/api'
 
 const evaluations = ref<EvaluationResponse[]>([])
@@ -204,7 +200,6 @@ const labSessions = ref<LabSession[]>([])
 const showCreate = ref(false)
 const newLabSessionId = ref<number | null>(null)
 const newStudentId = ref<number | null>(null)
-const newSubjectId = ref<number | null>(null)
 const newQuestionId = ref<number | null>(null)
 const newTaId = ref<number | null>(null)
 const newMarking = ref<Marking>(5)
@@ -213,6 +208,10 @@ const editId = ref<number | null>(null)
 const editMarking = ref<Marking>(5)
 const editRemarks = ref('')
 const filterSubjectId = ref<number | string>('')
+
+// Session roster state for the create modal
+const sessionRoster = ref<SessionAssignment[]>([])
+const sessionRosterLoading = ref(false)
 
 async function load() {
   ;[evaluations.value, users.value, questions.value, subjects.value, labSessions.value] =
@@ -259,34 +258,45 @@ const filteredEvaluations = computed(() => {
   })
 })
 
-const nonAdminUsers = computed(() => {
-  return users.value.filter((u) => !u.is_admin)
-})
-
-// Options for the searchable student combobox
-const studentOptions = computed(() =>
-  nonAdminUsers.value.map((u) => ({ value: u.id, label: `${u.name} (${u.email})` })),
+// Roster-driven options for the create modal
+const sessionStudentOptions = computed(() =>
+  sessionRoster.value
+    .filter((a) => a.role === 'student')
+    .map((a) => {
+      const u = users.value.find((user) => user.id === a.user_id)
+      return { value: a.user_id, label: u ? `${u.name} (${u.email})` : String(a.user_id) }
+    }),
 )
 
-const filteredSubjectsForStudent = computed(() => {
-  if (!newStudentId.value) return []
-  return subjects.value
+const sessionTaOptions = computed(() =>
+  sessionRoster.value
+    .filter((a) => a.role === 'ta')
+    .map((a) => {
+      const u = users.value.find((user) => user.id === a.user_id)
+      return { value: a.user_id, label: u ? `${u.name} (${u.email})` : String(a.user_id) }
+    }),
+)
+
+const sessionQuestionOptions = computed(() => {
+  if (!newLabSessionId.value) return []
+  const session = labSessions.value.find((s) => s.id === newLabSessionId.value)
+  if (!session) return []
+  return questions.value.filter((q) => q.subject_id === session.subject_id)
 })
 
-const filteredQuestionsForSubject = computed(() => {
-  if (!newSubjectId.value) return []
-  return questions.value.filter((q) => q.subject_id === newSubjectId.value)
-})
-
-function onStudentChange() {
-  // Reset subject and question when student changes
-  newSubjectId.value = null
+async function onSessionChange() {
+  // Reset dependent pickers when session changes
+  newStudentId.value = null
+  newTaId.value = null
   newQuestionId.value = null
-}
-
-function onSubjectChange() {
-  // Reset question when subject changes
-  newQuestionId.value = null
+  sessionRoster.value = []
+  if (!newLabSessionId.value) return
+  sessionRosterLoading.value = true
+  try {
+    sessionRoster.value = await getSessionAssignments(newLabSessionId.value)
+  } finally {
+    sessionRosterLoading.value = false
+  }
 }
 
 async function createEvaluationHandler() {
@@ -308,11 +318,11 @@ async function createEvaluationHandler() {
   })
   newLabSessionId.value = null
   newStudentId.value = null
-  newSubjectId.value = null
   newQuestionId.value = null
   newTaId.value = null
   newMarking.value = 5
   newRemarks.value = ''
+  sessionRoster.value = []
   showCreate.value = false
   await load()
 }
