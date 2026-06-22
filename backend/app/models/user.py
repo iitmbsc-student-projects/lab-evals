@@ -1,12 +1,11 @@
 """
-User model for authentication and RBAC.
-No passwords stored; Google OAuth only.
+User model for authentication.
+No passwords stored; Google OAuth only. Admin flag replaces global role.
 """
 
-from sqlalchemy import DateTime, Enum, Integer, String, func
+from sqlalchemy import Boolean, DateTime, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.constants.enums import UserRole
 from app.core.database import Base
 
 
@@ -22,8 +21,8 @@ class User(Base):
     google_sub: Mapped[str] = mapped_column(
         String(128), unique=True, index=True, nullable=True
     )
-    role: Mapped[UserRole] = mapped_column(
-        Enum(UserRole), nullable=False, default=UserRole.student
+    is_admin: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
     )
     created_at: Mapped[DateTime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

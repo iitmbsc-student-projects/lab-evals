@@ -1,5 +1,5 @@
 """
-Subject model. Created by admin. Has many questions and enrollments.
+Subject model. Created by admin. Has many questions and lab sessions.
 """
 
 from sqlalchemy import Integer, String
@@ -18,6 +18,8 @@ class Subject(Base):
     questions = relationship(
         "Question", back_populates="subject", cascade="all, delete-orphan"
     )
-    enrollments = relationship(
-        "Enrollment", back_populates="subject", cascade="all, delete-orphan"
+    lab_sessions = relationship(
+        "LabSession",
+        back_populates="subject",
+        cascade="all, delete-orphan",
     )
