@@ -1,5 +1,6 @@
 """
-Admin endpoints for managing subjects, questions, and enrollments.
+Admin endpoints for managing subjects, questions, lab sessions,
+session assignments, users, evaluations, and audit export.
 RBAC: Admin only.
 """
 
@@ -11,35 +12,41 @@ from datetime import UTC, date, datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 
-from app.api.deps import require_role
-from app.constants.enums import UserRole
+from app.api.deps import require_admin
+from app.constants.enums import SubjectRole
 from app.core.audit import AuditRecorder, get_audit_recorder, snapshot
 from app.core.database import SessionLocal
 from app.models.audit_log import AuditLog
-from app.models.enrollment import Enrollment
 from app.models.evaluation import Evaluation
+from app.models.lab_session import LabSession
 from app.models.question import Question
+from app.models.session_assignment import SessionAssignment
 from app.models.subject import Subject
 from app.models.user import User
-from app.schemas.enrollment import (
-    EnrollmentCreate,
-    EnrollmentResponse,
-)
 from app.schemas.evaluation import (
+    EvaluationCreate,
     EvaluationResponse,
     EvaluationUpdate,
+)
+from app.schemas.lab_session import (
+    LabSessionCreate,
+    LabSessionResponse,
+    LabSessionUpdate,
 )
 from app.schemas.question import (
     QuestionCreate,
     QuestionResponse,
     QuestionUpdate,
 )
+from app.schemas.session_assignment import (
+    SessionAssignmentCreate,
+    SessionAssignmentResponse,
+)
 from app.schemas.subject import SubjectCreate, SubjectResponse, SubjectUpdate
 from app.schemas.user import UserCreate, UserResponse, UserUpdate
 
-# --- User Endpoints ---
+router = APIRouter(dependencies=[Depends(require_admin)])
 
-router = APIRouter(dependencies=[Depends(require_role(UserRole.admin))])
 
 # --- Subject Endpoints ---
 
@@ -61,6 +68,7 @@ def create_subject(
             resource_id=db_obj.id,
             request_body=subject.model_dump(),
             after_state=snapshot(db_obj),
+            actor_role="admin",
         )
         db.commit()
         db.refresh(db_obj)
@@ -119,6 +127,7 @@ def update_subject(
             request_body=subject.model_dump(),
             before_state=before,
             after_state=snapshot(db_obj),
+            actor_role="admin",
         )
         db.commit()
         db.refresh(db_obj)
@@ -148,6 +157,7 @@ def delete_subject(
             resource_type="subject",
             resource_id=subject_id,
             before_state=before,
+            actor_role="admin",
         )
         db.commit()
         return {}, status.HTTP_204_NO_CONTENT
@@ -181,6 +191,7 @@ def create_question(
             resource_id=db_obj.id,
             request_body=question.model_dump(),
             after_state=snapshot(db_obj),
+            actor_role="admin",
         )
         db.commit()
         db.refresh(db_obj)
@@ -244,6 +255,7 @@ def update_question(
             request_body=question.model_dump(),
             before_state=before,
             after_state=snapshot(db_obj),
+            actor_role="admin",
         )
         db.commit()
         db.refresh(db_obj)
@@ -273,6 +285,7 @@ def delete_question(
             resource_type="question",
             resource_id=question_id,
             before_state=before,
+            actor_role="admin",
         )
         db.commit()
         return {}, status.HTTP_204_NO_CONTENT
@@ -294,7 +307,7 @@ def create_user(
             name=user.name,
             email=user.email,
             google_sub=user.google_sub,
-            role=user.role,
+            is_admin=user.is_admin,
         )
         db.add(db_obj)
         db.flush()
@@ -305,6 +318,7 @@ def create_user(
             resource_id=db_obj.id,
             request_body=user.model_dump(),
             after_state=snapshot(db_obj),
+            actor_role="admin",
         )
         db.commit()
         db.refresh(db_obj)
@@ -354,7 +368,7 @@ def update_user(
         db_obj.email = user.email
         if user.google_sub is not None:
             db_obj.google_sub = user.google_sub
-        db_obj.role = user.role
+        db_obj.is_admin = user.is_admin
         audit.record(
             db,
             action="user.update",
@@ -363,6 +377,7 @@ def update_user(
             request_body=user.model_dump(),
             before_state=before,
             after_state=snapshot(db_obj),
+            actor_role="admin",
         )
         db.commit()
         db.refresh(db_obj)
@@ -391,6 +406,7 @@ def delete_user(
             resource_type="user",
             resource_id=user_id,
             before_state=before,
+            actor_role="admin",
         )
         db.commit()
         return {}, status.HTTP_204_NO_CONTENT
@@ -398,57 +414,52 @@ def delete_user(
         db.close()
 
 
-# --- Enrollment Endpoints ---
+# --- Lab Session Endpoints ---
 
 
-@router.post("/enrollments", response_model=EnrollmentResponse)
-def create_enrollment(
-    enrollment: EnrollmentCreate,
+@router.post("/lab-sessions", response_model=LabSessionResponse)
+def create_lab_session(
+    session: LabSessionCreate,
     audit: AuditRecorder = Depends(get_audit_recorder),
 ):
     db = SessionLocal()
     try:
-        student = (
-            db.query(User)
-            .filter_by(id=enrollment.user_id, role=UserRole.student)
-            .first()
-        )
-        if not student:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="User is not a student or does not exist",
-            )
-        subject = db.query(Subject).filter_by(id=enrollment.subject_id).first()
+        subject = db.query(Subject).filter_by(id=session.subject_id).first()
         if not subject:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Subject does not exist",
             )
         exists = (
-            db.query(Enrollment)
+            db.query(LabSession)
             .filter_by(
-                user_id=enrollment.user_id,
-                subject_id=enrollment.subject_id,
+                subject_id=session.subject_id,
+                date=session.date,
             )
             .first()
         )
         if exists:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Enrollment already exists",
+                detail=(
+                    "Lab session already exists for this subject and date"
+                ),
             )
-        db_obj = Enrollment(
-            user_id=enrollment.user_id, subject_id=enrollment.subject_id
+        db_obj = LabSession(
+            subject_id=session.subject_id,
+            date=session.date,
+            accepting_evaluations=session.accepting_evaluations,
         )
         db.add(db_obj)
         db.flush()
         audit.record(
             db,
-            action="enrollment.create",
-            resource_type="enrollment",
+            action="lab_session.create",
+            resource_type="lab_session",
             resource_id=db_obj.id,
-            request_body=enrollment.model_dump(),
+            request_body=session.model_dump(),
             after_state=snapshot(db_obj),
+            actor_role="admin",
         )
         db.commit()
         db.refresh(db_obj)
@@ -457,51 +468,89 @@ def create_enrollment(
         db.close()
 
 
-@router.get("/enrollments/{enrollment_id}", response_model=EnrollmentResponse)
-def get_enrollment(enrollment_id: int):
+@router.get("/lab-sessions/{session_id}", response_model=LabSessionResponse)
+def get_lab_session(session_id: int):
     db = SessionLocal()
     try:
-        db_obj = db.query(Enrollment).filter_by(id=enrollment_id).first()
+        db_obj = db.query(LabSession).filter_by(id=session_id).first()
         if not db_obj:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Enrollment not found",
+                detail="Lab session not found",
             )
         return db_obj
     finally:
         db.close()
 
 
-@router.get("/enrollments", response_model=list[EnrollmentResponse])
-def list_enrollments():
+@router.get("/lab-sessions", response_model=list[LabSessionResponse])
+def list_lab_sessions(subject_id: int | None = None):
     db = SessionLocal()
     try:
-        return db.query(Enrollment).all()
+        query = db.query(LabSession)
+        if subject_id is not None:
+            query = query.filter_by(subject_id=subject_id)
+        return query.all()
     finally:
         db.close()
 
 
-@router.delete("/enrollments/{enrollment_id}")
-def delete_enrollment(
-    enrollment_id: int,
+@router.put("/lab-sessions/{session_id}", response_model=LabSessionResponse)
+def update_lab_session(
+    session_id: int,
+    session: LabSessionUpdate,
     audit: AuditRecorder = Depends(get_audit_recorder),
 ):
     db = SessionLocal()
     try:
-        db_obj = db.query(Enrollment).filter_by(id=enrollment_id).first()
+        db_obj = db.query(LabSession).filter_by(id=session_id).first()
         if not db_obj:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Enrollment not found",
+                detail="Lab session not found",
+            )
+        before = snapshot(db_obj)
+        db_obj.date = session.date
+        db_obj.accepting_evaluations = session.accepting_evaluations
+        audit.record(
+            db,
+            action="lab_session.update",
+            resource_type="lab_session",
+            resource_id=db_obj.id,
+            request_body=session.model_dump(),
+            before_state=before,
+            after_state=snapshot(db_obj),
+            actor_role="admin",
+        )
+        db.commit()
+        db.refresh(db_obj)
+        return db_obj
+    finally:
+        db.close()
+
+
+@router.delete("/lab-sessions/{session_id}")
+def delete_lab_session(
+    session_id: int,
+    audit: AuditRecorder = Depends(get_audit_recorder),
+):
+    db = SessionLocal()
+    try:
+        db_obj = db.query(LabSession).filter_by(id=session_id).first()
+        if not db_obj:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Lab session not found",
             )
         before = snapshot(db_obj)
         db.delete(db_obj)
         audit.record(
             db,
-            action="enrollment.delete",
-            resource_type="enrollment",
-            resource_id=enrollment_id,
+            action="lab_session.delete",
+            resource_type="lab_session",
+            resource_id=session_id,
             before_state=before,
+            actor_role="admin",
         )
         db.commit()
         return {}, status.HTTP_204_NO_CONTENT
@@ -509,7 +558,171 @@ def delete_enrollment(
         db.close()
 
 
-# == Evaluations
+@router.patch(
+    "/lab-sessions/{session_id}/accepting",
+    response_model=LabSessionResponse,
+)
+def set_lab_session_accepting(
+    session_id: int,
+    accepting_evaluations: bool,
+    audit: AuditRecorder = Depends(get_audit_recorder),
+):
+    db = SessionLocal()
+    try:
+        db_obj = db.query(LabSession).filter_by(id=session_id).first()
+        if not db_obj:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Lab session not found",
+            )
+        before = snapshot(db_obj)
+        db_obj.accepting_evaluations = accepting_evaluations
+        audit.record(
+            db,
+            action="lab_session.update",
+            resource_type="lab_session",
+            resource_id=db_obj.id,
+            request_body={"accepting_evaluations": accepting_evaluations},
+            before_state=before,
+            after_state=snapshot(db_obj),
+            actor_role="admin",
+        )
+        db.commit()
+        db.refresh(db_obj)
+        return db_obj
+    finally:
+        db.close()
+
+
+# --- Session Assignment Endpoints ---
+
+
+@router.post("/session-assignments", response_model=SessionAssignmentResponse)
+def create_session_assignment(
+    assignment: SessionAssignmentCreate,
+    audit: AuditRecorder = Depends(get_audit_recorder),
+):
+    db = SessionLocal()
+    try:
+        session = (
+            db.query(LabSession)
+            .filter_by(id=assignment.lab_session_id)
+            .first()
+        )
+        if not session:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Lab session does not exist",
+            )
+        user = db.query(User).filter_by(id=assignment.user_id).first()
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="User does not exist",
+            )
+        exists = (
+            db.query(SessionAssignment)
+            .filter_by(
+                lab_session_id=assignment.lab_session_id,
+                user_id=assignment.user_id,
+            )
+            .first()
+        )
+        if exists:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Assignment already exists for this user and session",
+            )
+        db_obj = SessionAssignment(
+            lab_session_id=assignment.lab_session_id,
+            user_id=assignment.user_id,
+            role=assignment.role,
+        )
+        db.add(db_obj)
+        db.flush()
+        audit.record(
+            db,
+            action="session_assignment.create",
+            resource_type="session_assignment",
+            resource_id=db_obj.id,
+            request_body=assignment.model_dump(),
+            after_state=snapshot(db_obj),
+            actor_role="admin",
+        )
+        db.commit()
+        db.refresh(db_obj)
+        return db_obj
+    finally:
+        db.close()
+
+
+@router.get(
+    "/session-assignments/{assignment_id}",
+    response_model=SessionAssignmentResponse,
+)
+def get_session_assignment(assignment_id: int):
+    db = SessionLocal()
+    try:
+        db_obj = (
+            db.query(SessionAssignment).filter_by(id=assignment_id).first()
+        )
+        if not db_obj:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Session assignment not found",
+            )
+        return db_obj
+    finally:
+        db.close()
+
+
+@router.get(
+    "/session-assignments",
+    response_model=list[SessionAssignmentResponse],
+)
+def list_session_assignments(lab_session_id: int | None = None):
+    db = SessionLocal()
+    try:
+        query = db.query(SessionAssignment)
+        if lab_session_id is not None:
+            query = query.filter_by(lab_session_id=lab_session_id)
+        return query.all()
+    finally:
+        db.close()
+
+
+@router.delete("/session-assignments/{assignment_id}")
+def delete_session_assignment(
+    assignment_id: int,
+    audit: AuditRecorder = Depends(get_audit_recorder),
+):
+    db = SessionLocal()
+    try:
+        db_obj = (
+            db.query(SessionAssignment).filter_by(id=assignment_id).first()
+        )
+        if not db_obj:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Session assignment not found",
+            )
+        before = snapshot(db_obj)
+        db.delete(db_obj)
+        audit.record(
+            db,
+            action="session_assignment.delete",
+            resource_type="session_assignment",
+            resource_id=assignment_id,
+            before_state=before,
+            actor_role="admin",
+        )
+        db.commit()
+        return {}, status.HTTP_204_NO_CONTENT
+    finally:
+        db.close()
+
+
+# --- Evaluation Oversight Endpoints ---
 
 
 @router.get("/evaluations", response_model=list[EvaluationResponse])
@@ -523,30 +736,20 @@ def list_evaluations():
 
 @router.post("/evaluations/", response_model=EvaluationResponse)
 def create_evaluation(
-    evaluation: EvaluationUpdate,
+    evaluation: EvaluationCreate,
     audit: AuditRecorder = Depends(get_audit_recorder),
 ):
     db = SessionLocal()
     try:
-        student = (
-            db.query(User)
-            .filter_by(id=evaluation.student_id, role=UserRole.student)
+        session = (
+            db.query(LabSession)
+            .filter_by(id=evaluation.lab_session_id)
             .first()
         )
-        if not student:
+        if not session:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="User is not a student or does not exist",
-            )
-        ta = (
-            db.query(User)
-            .filter_by(id=evaluation.ta_id, role=UserRole.ta)
-            .first()
-        )
-        if not ta:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="User is not a TA or does not exist",
+                detail="Lab session does not exist",
             )
         question = (
             db.query(Question).filter_by(id=evaluation.question_id).first()
@@ -556,24 +759,47 @@ def create_evaluation(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Question does not exist",
             )
-        enrollment = (
-            db.query(Enrollment)
+        if question.subject_id != session.subject_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=("Question does not belong to the session's subject"),
+            )
+        student_assignment = (
+            db.query(SessionAssignment)
             .filter_by(
-                user_id=evaluation.student_id, subject_id=question.subject_id
+                lab_session_id=evaluation.lab_session_id,
+                user_id=evaluation.student_id,
+                role=SubjectRole.student,
             )
             .first()
         )
-        if not enrollment:
+        if not student_assignment:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Student is not enrolled in the subject",
+                detail=(
+                    "Student is not assigned to this session as a student"
+                ),
+            )
+        ta_assignment = (
+            db.query(SessionAssignment)
+            .filter_by(
+                lab_session_id=evaluation.lab_session_id,
+                user_id=evaluation.ta_id,
+                role=SubjectRole.ta,
+            )
+            .first()
+        )
+        if not ta_assignment:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="TA is not assigned to this session as a TA",
             )
         exists = (
             db.query(Evaluation)
             .filter_by(
+                lab_session_id=evaluation.lab_session_id,
                 student_id=evaluation.student_id,
                 question_id=evaluation.question_id,
-                ta_id=evaluation.ta_id,
             )
             .first()
         )
@@ -583,6 +809,7 @@ def create_evaluation(
                 detail="Evaluation already exists for this data",
             )
         db_obj = Evaluation(
+            lab_session_id=evaluation.lab_session_id,
             student_id=evaluation.student_id,
             question_id=evaluation.question_id,
             ta_id=evaluation.ta_id,
@@ -598,6 +825,7 @@ def create_evaluation(
             resource_id=db_obj.id,
             request_body=evaluation.model_dump(),
             after_state=snapshot(db_obj),
+            actor_role="admin",
         )
         db.commit()
         db.refresh(db_obj)
@@ -620,25 +848,15 @@ def update_evaluation(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Evaluation not found",
             )
-        student = (
-            db.query(User)
-            .filter_by(id=evaluation.student_id, role=UserRole.student)
+        session = (
+            db.query(LabSession)
+            .filter_by(id=evaluation.lab_session_id)
             .first()
         )
-        if not student:
+        if not session:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="User is not a student or does not exist",
-            )
-        ta = (
-            db.query(User)
-            .filter_by(id=evaluation.ta_id, role=UserRole.ta)
-            .first()
-        )
-        if not ta:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="User is not a TA or does not exist",
+                detail="Lab session does not exist",
             )
         question = (
             db.query(Question).filter_by(id=evaluation.question_id).first()
@@ -648,20 +866,43 @@ def update_evaluation(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Question does not exist",
             )
-        enrollment = (
-            db.query(Enrollment)
+        if question.subject_id != session.subject_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=("Question does not belong to the session's subject"),
+            )
+        student_assignment = (
+            db.query(SessionAssignment)
             .filter_by(
-                student_id=evaluation.student_id,
-                subject_id=question.subject_id,
+                lab_session_id=evaluation.lab_session_id,
+                user_id=evaluation.student_id,
+                role=SubjectRole.student,
             )
             .first()
         )
-        if not enrollment:
+        if not student_assignment:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Student is not enrolled in the subject",
+                detail=(
+                    "Student is not assigned to this session as a student"
+                ),
+            )
+        ta_assignment = (
+            db.query(SessionAssignment)
+            .filter_by(
+                lab_session_id=evaluation.lab_session_id,
+                user_id=evaluation.ta_id,
+                role=SubjectRole.ta,
+            )
+            .first()
+        )
+        if not ta_assignment:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="TA is not assigned to this session as a TA",
             )
         before = snapshot(db_obj)
+        db_obj.lab_session_id = evaluation.lab_session_id
         db_obj.student_id = evaluation.student_id
         db_obj.question_id = evaluation.question_id
         db_obj.ta_id = evaluation.ta_id
@@ -676,6 +917,7 @@ def update_evaluation(
             request_body=evaluation.model_dump(),
             before_state=before,
             after_state=snapshot(db_obj),
+            actor_role="admin",
         )
         db.commit()
         db.refresh(db_obj)
@@ -705,6 +947,7 @@ def delete_evaluation(
             resource_type="evaluation",
             resource_id=evaluation_id,
             before_state=before,
+            actor_role="admin",
         )
         db.commit()
         return {}, status.HTTP_204_NO_CONTENT
