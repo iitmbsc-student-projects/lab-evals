@@ -145,15 +145,9 @@ onMounted(() => {
 
       auth.token = access_token
       const user = await fetchMe()
-      auth.setAuth(access_token, user.role, user)
+      auth.setAuth(access_token, user)
 
-      if (user.role === 'admin') {
-        router.replace('/admin/subjects')
-      } else if (user.role === 'ta') {
-        router.replace('/ta/evaluations')
-      } else {
-        router.replace('/student/questions')
-      }
+      router.replace('/')
     } catch (e: unknown) {
       console.log(e)
       error.value = e instanceof Error ? e.message : 'Login failed. Please try again.'

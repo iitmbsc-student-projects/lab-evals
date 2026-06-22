@@ -12,13 +12,20 @@ const routes = [
   },
   {
     path: '/',
-    component: () => import('../views/PortalView.vue'),
+    component: () => import('../components/layout/AppShell.vue'),
     meta: { requiresAuth: true },
-  },
-  {
-    path: '/sessions/:sessionId',
-    component: () => import('../views/SessionView.vue'),
-    meta: { requiresAuth: true },
+    children: [
+      {
+        path: '',
+        name: 'portal',
+        component: () => import('../views/PortalView.vue'),
+      },
+      {
+        path: 'sessions/:sessionId',
+        name: 'session',
+        component: () => import('../views/SessionView.vue'),
+      },
+    ],
   },
   // Admin
   {
