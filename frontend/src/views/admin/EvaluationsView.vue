@@ -32,6 +32,7 @@
         <th>Subject</th>
         <th>Question</th>
         <th>TA</th>
+        <th>Session</th>
         <th>Marking</th>
         <th>Remarks</th>
         <th>Actions</th>
@@ -42,6 +43,7 @@
         <td>{{ getQuestionSubject(evaluation.question_id) }}</td>
         <td>{{ getQuestionText(evaluation.question_id) }}</td>
         <td>{{ getUserName(evaluation.ta_id) }}</td>
+        <td>{{ getSessionLabel(evaluation.lab_session_id) }}</td>
         <td v-if="editId !== evaluation.id">{{ evaluation.marking }} / 5</td>
         <td v-else>
           <AppSelect v-model.number="editMarking">
@@ -102,6 +104,12 @@
             </svg>
           </button>
         </div>
+        <AppSelect v-model="newLabSessionId" label="Lab Session" required class="mb-3">
+          <option :value="null">-- Select Lab Session --</option>
+          <option v-for="session in labSessions" :key="session.id" :value="session.id">
+            {{ getSessionLabel(session.id) }}
+          </option>
+        </AppSelect>
         <AppCombobox
           v-model="newStudentId"
           :options="studentOptions"
@@ -144,7 +152,7 @@
           </option>
         </AppSelect>
         <AppSelect v-model="newTaId" label="TA" required class="mb-3">
-          <option v-for="user in tas" :key="user.id" :value="user.id">
+          <option v-for="user in nonAdminUsers" :key="user.id" :value="user.id">
             {{ user.name }} ({{ user.email }})
           </option>
         </AppSelect>
@@ -177,7 +185,7 @@ import {
   getUsers,
   getQuestions,
   getSubjects,
-  getEnrollments,
+  getLabSessions,
 } from '../../api/admin'
 import type {
   EvaluationResponse,
@@ -185,15 +193,16 @@ import type {
   QuestionResponse,
   Marking,
   SubjectResponse,
-  EnrollmentResponse,
+  LabSession,
 } from '../../types/api'
 
 const evaluations = ref<EvaluationResponse[]>([])
 const users = ref<UserResponse[]>([])
 const questions = ref<QuestionResponse[]>([])
 const subjects = ref<SubjectResponse[]>([])
-const enrollments = ref<EnrollmentResponse[]>([])
+const labSessions = ref<LabSession[]>([])
 const showCreate = ref(false)
+const newLabSessionId = ref<number | null>(null)
 const newStudentId = ref<number | null>(null)
 const newSubjectId = ref<number | null>(null)
 const newQuestionId = ref<number | null>(null)
@@ -206,13 +215,13 @@ const editRemarks = ref('')
 const filterSubjectId = ref<number | string>('')
 
 async function load() {
-  ;[evaluations.value, users.value, questions.value, subjects.value, enrollments.value] =
+  ;[evaluations.value, users.value, questions.value, subjects.value, labSessions.value] =
     await Promise.all([
       getEvaluations(),
       getUsers(),
       getQuestions(),
       getSubjects(),
-      getEnrollments(),
+      getLabSessions(),
     ])
 }
 onMounted(load)
@@ -230,6 +239,16 @@ function getQuestionSubject(questionId: number) {
   return subjects.value.find((s) => s.id === question.subject_id)?.name || ''
 }
 
+function getSubjectName(id: number) {
+  return subjects.value.find((s) => s.id === id)?.name || ''
+}
+
+function getSessionLabel(sessionId: number) {
+  const session = labSessions.value.find((s) => s.id === sessionId)
+  if (!session) return `Session #${sessionId}`
+  return `${getSubjectName(session.subject_id)} — ${session.date}`
+}
+
 const filteredEvaluations = computed(() => {
   if (filterSubjectId.value === '' || filterSubjectId.value === null) {
     return evaluations.value
@@ -240,27 +259,18 @@ const filteredEvaluations = computed(() => {
   })
 })
 
-const students = computed(() => {
-  return users.value.filter((u) => u.role === 'student')
+const nonAdminUsers = computed(() => {
+  return users.value.filter((u) => !u.is_admin)
 })
 
 // Options for the searchable student combobox
 const studentOptions = computed(() =>
-  students.value.map((u) => ({ value: u.id, label: `${u.name} (${u.email})` })),
+  nonAdminUsers.value.map((u) => ({ value: u.id, label: `${u.name} (${u.email})` })),
 )
-
-const tas = computed(() => {
-  return users.value.filter((u) => u.role === 'ta')
-})
 
 const filteredSubjectsForStudent = computed(() => {
   if (!newStudentId.value) return []
-
-  const studentSubjectIds = enrollments.value
-    .filter((e) => e.user_id === newStudentId.value)
-    .map((e) => e.subject_id)
-
-  return subjects.value.filter((s) => studentSubjectIds.includes(s.id))
+  return subjects.value
 })
 
 const filteredQuestionsForSubject = computed(() => {
@@ -280,14 +290,23 @@ function onSubjectChange() {
 }
 
 async function createEvaluationHandler() {
-  if (!newStudentId.value || !newQuestionId.value || !newTaId.value || !newMarking.value) return
+  if (
+    !newLabSessionId.value ||
+    !newStudentId.value ||
+    !newQuestionId.value ||
+    !newTaId.value ||
+    !newMarking.value
+  )
+    return
   await createEvaluation({
+    lab_session_id: newLabSessionId.value,
     student_id: newStudentId.value,
     question_id: newQuestionId.value,
     ta_id: newTaId.value,
     marking: newMarking.value,
     remarks: newRemarks.value || null,
   })
+  newLabSessionId.value = null
   newStudentId.value = null
   newSubjectId.value = null
   newQuestionId.value = null
@@ -308,6 +327,7 @@ async function saveEdit(id: number) {
   const ev = evaluations.value.find((e) => e.id === id)
   if (!ev) return
   await updateEvaluation(id, {
+    lab_session_id: ev.lab_session_id,
     student_id: ev.student_id,
     question_id: ev.question_id,
     ta_id: ev.ta_id,

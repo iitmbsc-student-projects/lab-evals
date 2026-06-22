@@ -115,6 +115,7 @@ export interface EvaluationUpdate {
   ta_id: number
   marking: Marking
   remarks?: string | null
+  lab_session_id: number
 }
 
 export interface TAEvaluationCreate {

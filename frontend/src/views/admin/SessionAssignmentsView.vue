@@ -1,63 +1,77 @@
 <!--
-  EnrollmentsView.vue (Admin)
-  Admin can view, create, and delete enrollments.
+  SessionAssignmentsView.vue (Admin)
+  Admin can view, create, and delete session assignments. Supports CSV bulk upload for students.
 -->
 <template>
   <div>
     <div class="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center mb-6">
       <div>
-        <h2 class="text-2xl font-bold text-zinc-900">Enrollments</h2>
-        <p class="text-sm text-zinc-600 mt-1">Manage student enrollments and bulk upload via CSV</p>
+        <h2 class="text-2xl font-bold text-zinc-900">Session Assignments</h2>
+        <p class="text-sm text-zinc-600 mt-1">Manage per-session rosters (students and TAs)</p>
       </div>
       <div class="flex flex-wrap gap-2">
-        <AppButton @click="showCreate = true">Add Enrollment</AppButton>
-        <AppButton @click="showBulkUpload = true" variant="secondary">Bulk Upload CSV</AppButton>
+        <AppButton :disabled="!selectedSessionId" @click="showAdd = true">Add Assignment</AppButton>
+        <AppButton :disabled="!selectedSessionId" @click="showBulkUpload = true" variant="secondary"
+          >Bulk Upload CSV</AppButton
+        >
       </div>
     </div>
-    <!-- Subject Filter -->
+
+    <!-- Session Picker -->
     <div class="mb-4">
-      <AppSelect v-model="filterSubjectId" label="Filter by Subject" class="max-w-md">
-        <option value="">All Subjects</option>
-        <option v-for="subject in subjects" :key="subject.id" :value="subject.id">
-          {{ subject.name }}
+      <AppSelect v-model="selectedSessionId" label="Select Lab Session" class="max-w-md">
+        <option :value="null">-- Select a session --</option>
+        <option v-for="session in labSessions" :key="session.id" :value="session.id">
+          {{ sessionLabel(session) }}
         </option>
       </AppSelect>
     </div>
+
+    <div v-if="!selectedSessionId" class="text-zinc-500 text-sm py-8 text-center">
+      Select a lab session to view and manage assignments.
+    </div>
+
     <AppTable
-      :isEmpty="filteredEnrollments.length === 0"
-      emptyMessage="No enrollments found. Add your first enrollment or adjust your filters."
+      v-else
+      :isEmpty="selectedSessionAssignments.length === 0"
+      emptyMessage="No assignments for this session. Add users or bulk upload students."
     >
       <template #head>
         <th>ID</th>
-        <th>User Email</th>
-        <th>User Name</th>
-        <th>Subject</th>
+        <th>Name</th>
+        <th>Email</th>
+        <th>Role</th>
         <th>Actions</th>
       </template>
-      <tr v-for="enrollment in filteredEnrollments" :key="enrollment.id">
-        <td>{{ enrollment.id }}</td>
-        <td>{{ getUser(enrollment.user_id)?.email }}</td>
-        <td>{{ getUser(enrollment.user_id)?.name }}</td>
-        <td>{{ getSubjectName(enrollment.subject_id) }}</td>
+      <tr v-for="assignment in selectedSessionAssignments" :key="assignment.id">
+        <td>{{ assignment.id }}</td>
+        <td>{{ getUserName(assignment.user_id) }}</td>
+        <td>{{ getUserEmail(assignment.user_id) }}</td>
         <td>
-          <AppButton variant="danger" size="sm" @click="deleteEnrollmentHandler(enrollment.id)"
+          <AppBadge :variant="assignment.role === 'ta' ? 'info' : 'default'">
+            {{ assignment.role }}
+          </AppBadge>
+        </td>
+        <td>
+          <AppButton variant="danger" size="sm" @click="deleteAssignmentHandler(assignment.id)"
             >Delete</AppButton
           >
         </td>
       </tr>
     </AppTable>
-    <!-- Create Modal -->
+
+    <!-- Add Assignment Modal -->
     <div
-      v-if="showCreate"
+      v-if="showAdd"
       class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
     >
       <div
         class="bg-white p-6 rounded-lg shadow-xl w-full max-w-md max-h-[90vh] overflow-auto animate-in fade-in zoom-in duration-200"
       >
         <div class="flex justify-between items-center mb-4">
-          <h3 class="text-lg font-semibold text-zinc-900">Add Enrollment</h3>
+          <h3 class="text-lg font-semibold text-zinc-900">Add Assignment</h3>
           <button
-            @click="showCreate = false"
+            @click="showAdd = false"
             class="text-zinc-400 hover:text-zinc-600 transition-colors"
           >
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -70,24 +84,21 @@
             </svg>
           </button>
         </div>
-        <div class="mb-4">
-          <AppSelect v-model="newUserId" label="Student" required>
-            <option :value="null" disabled>Select a student</option>
-            <option v-for="user in students" :key="user.id" :value="user.id">
-              {{ user.name }} ({{ user.email }})
-            </option>
-          </AppSelect>
-        </div>
-        <div class="mb-4">
-          <AppSelect v-model="newSubjectId" :disabled="!newUserId" label="Subject" required>
-            <option v-for="subject in availableSubjects" :key="subject.id" :value="subject.id">
-              {{ subject.name }}
-            </option>
-          </AppSelect>
-        </div>
-        <div class="flex gap-2 justify-end">
-          <AppButton @click="showCreate = false" variant="ghost">Cancel</AppButton>
-          <AppButton @click="createEnrollmentHandler">Create Enrollment</AppButton>
+        <AppCombobox
+          v-model="newUserId"
+          :options="userOptions"
+          label="User"
+          placeholder="Search by name or email..."
+          required
+          class="mb-3"
+        />
+        <AppSelect v-model="newRole" label="Role" required class="mb-3">
+          <option value="student">student</option>
+          <option value="ta">ta</option>
+        </AppSelect>
+        <div class="flex gap-2 mt-6 justify-end">
+          <AppButton @click="showAdd = false" variant="ghost">Cancel</AppButton>
+          <AppButton @click="addAssignmentHandler">Add</AppButton>
         </div>
       </div>
     </div>
@@ -101,7 +112,7 @@
         class="bg-white p-6 rounded-lg shadow-xl w-full max-w-3xl max-h-[85vh] overflow-auto animate-in fade-in zoom-in duration-200"
       >
         <div class="flex justify-between items-center mb-4">
-          <h3 class="text-lg font-semibold text-zinc-900">Bulk Upload Enrollments</h3>
+          <h3 class="text-lg font-semibold text-zinc-900">Bulk Upload Students</h3>
           <button
             @click="showBulkUpload = false"
             class="text-zinc-400 hover:text-zinc-600 transition-colors"
@@ -117,45 +128,31 @@
           </button>
         </div>
 
-        <!-- Subject Selection -->
-        <div class="mb-4">
-          <label class="block text-sm font-medium mb-2"
-            >Select Subject to Enroll Students In:</label
-          >
-          <AppSelect v-model="bulkUploadSubjectId" class="w-full">
-            <option :value="null" disabled>Choose a subject</option>
-            <option v-for="subject in subjects" :key="subject.id" :value="subject.id">
-              {{ subject.name }}
-            </option>
-          </AppSelect>
+        <div class="mb-3 p-2 bg-zinc-50 border border-zinc-200 rounded text-sm">
+          <p class="font-medium text-zinc-700">
+            Session:
+            <span class="text-zinc-900">{{
+              selectedSessionId ? sessionLabel(labSessions.find((s) => s.id === selectedSessionId)!) : ''
+            }}</span>
+          </p>
         </div>
 
-        <div
-          v-if="bulkUploadSubjectId"
-          class="mb-4 p-3 bg-blue-50 border border-blue-200 rounded text-sm"
-        >
+        <div class="mb-4 p-3 bg-blue-50 border border-blue-200 rounded text-sm">
           <p class="font-semibold mb-1">CSV Format:</p>
-          <p>Your CSV file should have a single column with student emails (one per row):</p>
+          <p>Your CSV file should have a single column with user emails (one per row):</p>
           <ul class="list-disc list-inside mt-1">
-            <li><strong>email</strong> (required): Email address of the student</li>
+            <li><strong>email</strong> (required): Email address of the user</li>
           </ul>
-          <p class="mt-2">Available Students:</p>
-          <div class="ml-4 text-xs mt-1 max-h-24 overflow-auto bg-white p-2 rounded">
-            <div v-for="student in students" :key="student.id" class="py-0.5">
-              {{ student.email }} - {{ student.name }}
-            </div>
-          </div>
+          <p class="mt-1 text-zinc-600">Users are assigned as students by default.</p>
           <p class="mt-2">Example:</p>
           <code class="block mt-1 p-2 bg-white rounded">
             email<br />
-            alice.johnson@university.edu<br />
-            bob.smith@university.edu<br />
-            carol.williams@university.edu
+            alice@university.edu<br />
+            bob@university.edu
           </code>
         </div>
 
         <input
-          v-if="bulkUploadSubjectId"
           ref="fileInput"
           type="file"
           accept=".csv"
@@ -176,22 +173,19 @@
 
         <!-- Preview Table -->
         <div v-if="csvData.length > 0 && validationErrors.length === 0" class="mb-4">
-          <p class="font-semibold mb-2">
-            Preview ({{ csvData.length }} students enrolling in
-            {{ getSubjectName(bulkUploadSubjectId!) }}):
-          </p>
+          <p class="font-semibold mb-2">Preview ({{ csvData.length }} students):</p>
           <div class="border rounded max-h-60 overflow-auto">
             <table class="w-full text-sm">
               <thead class="bg-gray-50 sticky top-0">
                 <tr>
-                  <th class="px-3 py-2 text-left">Student Email</th>
-                  <th class="px-3 py-2 text-left">Student Name</th>
+                  <th class="px-3 py-2 text-left">Email</th>
+                  <th class="px-3 py-2 text-left">Name</th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-for="(row, idx) in csvData" :key="idx" class="border-t">
-                  <td class="px-3 py-2">{{ getUser(row.user_id)?.email }}</td>
-                  <td class="px-3 py-2">{{ getUser(row.user_id)?.name }}</td>
+                  <td class="px-3 py-2">{{ getUserEmail(row.user_id) }}</td>
+                  <td class="px-3 py-2">{{ getUserName(row.user_id) }}</td>
                 </tr>
               </tbody>
             </table>
@@ -222,7 +216,7 @@
             class="mb-2 p-3 bg-green-50 border border-green-200 rounded"
           >
             <p class="text-green-800 font-semibold">
-              ✓ Successfully uploaded {{ uploadResults.success.length }} enrollments
+              Successfully added {{ uploadResults.success.length }} students
             </p>
           </div>
           <div
@@ -251,7 +245,7 @@
             @click="startUpload"
             :disabled="isUploading"
           >
-            Upload {{ csvData.length }} Enrollments
+            Upload {{ csvData.length }} Students
           </AppButton>
         </div>
       </div>
@@ -260,105 +254,122 @@
 </template>
 
 <script setup lang="ts">
-// Admin Enrollments CRUD view
-import { ref, onMounted, computed } from 'vue'
+// Admin Session Assignments view
+import { ref, onMounted, computed, watch } from 'vue'
 import Papa from 'papaparse'
 import AppButton from '../../components/common/AppButton.vue'
 import AppSelect from '../../components/common/AppSelect.vue'
+import AppCombobox from '../../components/common/AppCombobox.vue'
 import AppTable from '../../components/common/AppTable.vue'
+import AppBadge from '../../components/common/AppBadge.vue'
 import {
-  getEnrollments,
-  createEnrollment,
-  deleteEnrollment,
-  getUsers,
+  getSessionAssignments,
+  createSessionAssignment,
+  deleteSessionAssignment,
+  getLabSessions,
   getSubjects,
+  getUsers,
 } from '../../api/admin'
 import type {
-  EnrollmentResponse,
-  UserResponse,
+  SessionAssignment,
+  SessionAssignmentCreate,
+  LabSession,
   SubjectResponse,
-  EnrollmentCreate,
+  UserResponse,
+  SubjectRole,
 } from '../../types/api'
 
-const enrollments = ref<EnrollmentResponse[]>([])
-const users = ref<UserResponse[]>([])
+const assignments = ref<SessionAssignment[]>([])
+const labSessions = ref<LabSession[]>([])
 const subjects = ref<SubjectResponse[]>([])
-const showCreate = ref(false)
+const users = ref<UserResponse[]>([])
+const selectedSessionId = ref<number | null>(null)
+const showAdd = ref(false)
 const newUserId = ref<number | null>(null)
-const newSubjectId = ref<number | null>(null)
-const filterSubjectId = ref<number | string>('')
+const newRole = ref<SubjectRole>('student')
 
 // Bulk upload state
 const showBulkUpload = ref(false)
-const bulkUploadSubjectId = ref<number | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
-const csvData = ref<EnrollmentCreate[]>([])
+const csvData = ref<SessionAssignmentCreate[]>([])
 const validationErrors = ref<string[]>([])
 const isUploading = ref(false)
 const uploadProgress = ref({ current: 0, total: 0 })
 const uploadResults = ref<{ success: string[]; errors: string[] }>({ success: [], errors: [] })
 
-const filteredEnrollments = computed(() => {
-  if (!filterSubjectId.value) return enrollments.value
-  return enrollments.value.filter((e) => e.subject_id === Number(filterSubjectId.value))
-})
-
-const students = computed(() => {
-  return users.value.filter((u) => u.role === 'student')
-})
-
-const availableSubjects = computed(() => {
-  if (!newUserId.value) return []
-  const studentEnrollments = enrollments.value.filter((e) => e.user_id === newUserId.value)
-  const enrolledSubjectIds = new Set(studentEnrollments.map((e) => e.subject_id))
-  return subjects.value.filter((s) => !enrolledSubjectIds.has(s.id))
-})
-
-async function load() {
-  ;[enrollments.value, users.value, subjects.value] = await Promise.all([
-    getEnrollments(),
-    getUsers(),
-    getSubjects(),
-  ])
-}
-onMounted(load)
-
-function getUser(id: number) {
-  return users.value.find((u) => u.id === id)
-}
 function getSubjectName(id: number) {
   return subjects.value.find((s) => s.id === id)?.name || ''
 }
 
-async function createEnrollmentHandler() {
-  if (!newUserId.value || !newSubjectId.value) return
-  await createEnrollment({ user_id: newUserId.value, subject_id: newSubjectId.value })
-  newUserId.value = null
-  newSubjectId.value = null
-  showCreate.value = false
-  await load()
+function sessionLabel(session: LabSession) {
+  return `${getSubjectName(session.subject_id)} — ${session.date}`
 }
 
-async function deleteEnrollmentHandler(id: number) {
-  const enrollment = enrollments.value.find((e) => e.id === id)
-  if (enrollment) {
-    const user = getUser(enrollment.user_id)
-    const subjectName = getSubjectName(enrollment.subject_id)
-    const userName = user?.name || 'this student'
-    if (
-      !confirm(
-        `Are you sure you want to remove ${userName} from ${subjectName}? This action cannot be undone.`,
-      )
-    ) {
-      return
-    }
-  } else if (
-    !confirm('Are you sure you want to delete this enrollment? This action cannot be undone.')
-  ) {
+function getUserName(id: number) {
+  return users.value.find((u) => u.id === id)?.name || ''
+}
+
+function getUserEmail(id: number) {
+  return users.value.find((u) => u.id === id)?.email || ''
+}
+
+const selectedSessionAssignments = computed(() => {
+  if (!selectedSessionId.value) return []
+  return assignments.value.filter((a) => a.lab_session_id === selectedSessionId.value)
+})
+
+const alreadyAssignedUserIds = computed(() => {
+  return new Set(selectedSessionAssignments.value.map((a) => a.user_id))
+})
+
+const userOptions = computed(() =>
+  users.value.map((u) => ({ value: u.id, label: `${u.name} (${u.email})` })),
+)
+
+async function loadBase() {
+  ;[labSessions.value, subjects.value, users.value] = await Promise.all([
+    getLabSessions(),
+    getSubjects(),
+    getUsers(),
+  ])
+}
+
+async function loadAssignments() {
+  if (!selectedSessionId.value) {
+    assignments.value = []
     return
   }
-  await deleteEnrollment(id)
-  await load()
+  assignments.value = await getSessionAssignments(selectedSessionId.value)
+}
+
+onMounted(async () => {
+  await loadBase()
+  await loadAssignments()
+})
+
+watch(selectedSessionId, async () => {
+  await loadAssignments()
+})
+
+async function addAssignmentHandler() {
+  if (!selectedSessionId.value || !newUserId.value) return
+  await createSessionAssignment({
+    lab_session_id: selectedSessionId.value,
+    user_id: newUserId.value,
+    role: newRole.value,
+  })
+  newUserId.value = null
+  newRole.value = 'student'
+  showAdd.value = false
+  await loadAssignments()
+}
+
+async function deleteAssignmentHandler(id: number) {
+  if (!confirm('Are you sure you want to remove this assignment? This action cannot be undone.')) {
+    return
+  }
+  await deleteSessionAssignment(id)
+  await loadAssignments()
 }
 
 // Bulk upload functions
@@ -387,17 +398,16 @@ function handleFileSelect(event: Event) {
 
 function validateAndLoadCSV(data: Record<string, string>[]) {
   const errors: string[] = []
-  const validData: EnrollmentCreate[] = []
+  const validData: SessionAssignmentCreate[] = []
   const csvEmails = new Set<string>()
 
-  if (!bulkUploadSubjectId.value) {
-    errors.push('Please select a subject first')
+  if (!selectedSessionId.value) {
+    errors.push('No session selected')
     validationErrors.value = errors
     return
   }
 
-  const subjectId = bulkUploadSubjectId.value
-  const subject = subjects.value.find((s) => s.id === subjectId)
+  const sessionId = selectedSessionId.value
 
   if (data.length === 0) {
     errors.push('CSV file is empty')
@@ -432,30 +442,22 @@ function validateAndLoadCSV(data: Record<string, string>[]) {
     // Find user by email
     const user = users.value.find((u) => u.email.toLowerCase() === email)
     if (!user) {
-      errors.push(`Row ${rowNum}: student with email '${row.email.trim()}' does not exist`)
+      errors.push(`Row ${rowNum}: user with email '${row.email.trim()}' does not exist`)
       return
     }
 
-    // Check if user is a student
-    if (user.role !== 'student') {
-      errors.push(`Row ${rowNum}: user '${row.email.trim()}' is not a student (role: ${user.role})`)
-      return
-    }
-
-    const userId = user.id
-
-    // Check if enrollment already exists in database
-    const existingEnrollment = enrollments.value.find(
-      (e) => e.user_id === userId && e.subject_id === subjectId,
-    )
-    if (existingEnrollment) {
-      errors.push(`Row ${rowNum}: ${user.name} is already enrolled in ${subject?.name}`)
+    // Check if already assigned to this session
+    if (alreadyAssignedUserIds.value.has(user.id)) {
+      errors.push(
+        `Row ${rowNum}: ${user.name} is already assigned to this session`,
+      )
       return
     }
 
     validData.push({
-      user_id: userId,
-      subject_id: subjectId,
+      lab_session_id: sessionId,
+      user_id: user.id,
+      role: 'student',
     })
   })
 
@@ -474,13 +476,13 @@ async function startUpload() {
   uploadResults.value = { success: [], errors: [] }
 
   for (const element of csvData.value) {
-    const enrollment = element
-    const user = getUser(enrollment.user_id)
-    const subjectName = getSubjectName(enrollment.subject_id)
+    const assignment = element
+    const user = users.value.find((u) => u.id === assignment.user_id)
+    const userName = user?.name || String(assignment.user_id)
 
     try {
-      await createEnrollment(enrollment)
-      uploadResults.value.success.push(`${user?.name} enrolled in ${subjectName}`)
+      await createSessionAssignment(assignment)
+      uploadResults.value.success.push(`${userName} added as student`)
       uploadProgress.value.current++
     } catch (error: unknown) {
       let errorMessage = 'Unknown error'
@@ -490,20 +492,17 @@ async function startUpload() {
         const apiError = error as { response?: { data?: { detail?: string } } }
         errorMessage = apiError.response?.data?.detail || 'Unknown error'
       }
-      uploadResults.value.errors.push(`${user?.name} in ${subjectName}: ${errorMessage}`)
+      uploadResults.value.errors.push(`${userName}: ${errorMessage}`)
       uploadProgress.value.current++
     }
   }
 
   isUploading.value = false
-
-  // Reload the enrollments list
-  await load()
+  await loadAssignments()
 }
 
 function closeBulkUpload() {
   showBulkUpload.value = false
-  bulkUploadSubjectId.value = null
   csvData.value = []
   validationErrors.value = []
   uploadResults.value = { success: [], errors: [] }

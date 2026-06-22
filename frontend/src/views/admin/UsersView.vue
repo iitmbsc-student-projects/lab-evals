@@ -14,27 +14,18 @@
         <AppButton @click="showBulkUpload = true" variant="secondary">Bulk Upload CSV</AppButton>
       </div>
     </div>
-    <!-- Role Filter -->
-    <div class="mb-4">
-      <AppSelect id="roleFilter" v-model="roleFilter" label="Filter by Role" class="max-w-xs">
-        <option value="">All</option>
-        <option value="student">Student</option>
-        <option value="ta">TA</option>
-        <option value="admin">Admin</option>
-      </AppSelect>
-    </div>
     <AppTable
-      :isEmpty="filteredUsers.length === 0"
-      emptyMessage="No users found. Add your first user or adjust your filters."
+      :isEmpty="users.length === 0"
+      emptyMessage="No users found. Add your first user or use bulk upload."
     >
       <template #head>
         <th>ID</th>
         <th>Name</th>
         <th>Email</th>
-        <th>Role</th>
+        <th>Admin?</th>
         <th>Actions</th>
       </template>
-      <tr v-for="user in filteredUsers" :key="user.id">
+      <tr v-for="user in users" :key="user.id">
         <td>{{ user.id }}</td>
         <td v-if="editId !== user.id">{{ user.name }}</td>
         <td v-else>
@@ -44,13 +35,16 @@
         <td v-else>
           <AppInput v-model="editEmail" />
         </td>
-        <td v-if="editId !== user.id">{{ user.role }}</td>
+        <td v-if="editId !== user.id">
+          <AppBadge :variant="user.is_admin ? 'purple' : 'default'">
+            {{ user.is_admin ? 'Yes' : 'No' }}
+          </AppBadge>
+        </td>
         <td v-else>
-          <AppSelect v-model="editRole">
-            <option value="student">student</option>
-            <option value="ta">ta</option>
-            <option value="admin">admin</option>
-          </AppSelect>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" v-model="editIsAdmin" class="w-4 h-4 rounded" />
+            <span class="text-sm text-zinc-700">Admin</span>
+          </label>
         </td>
         <td>
           <div class="flex gap-2">
@@ -104,11 +98,10 @@
         </div>
         <AppInput v-model="newName" placeholder="Name" label="Name" required class="mb-3" />
         <AppInput v-model="newEmail" placeholder="Email" label="Email" required class="mb-3" />
-        <AppSelect v-model="newRole" label="Role" required>
-          <option value="student">student</option>
-          <option value="ta">ta</option>
-          <option value="admin">admin</option>
-        </AppSelect>
+        <label class="flex items-center gap-2 cursor-pointer mb-4">
+          <input type="checkbox" v-model="newIsAdmin" class="w-4 h-4 rounded" />
+          <span class="text-sm font-medium text-zinc-700">Admin user</span>
+        </label>
         <div class="flex gap-2 mt-6 justify-end">
           <AppButton @click="showCreate = false" variant="ghost">Cancel</AppButton>
           <AppButton @click="createUserHandler">Create User</AppButton>
@@ -147,17 +140,13 @@
           <ul class="list-disc list-inside mt-1">
             <li><strong>name</strong> (required): User's full name</li>
             <li><strong>email</strong> (required): User's email address (must be unique)</li>
-            <li>
-              <strong>role</strong> (required): Must be one of: <code>student</code>,
-              <code>ta</code>, or <code>admin</code>
-            </li>
           </ul>
+          <p class="mt-1 text-zinc-600">Users are created as non-admin by default.</p>
           <p class="mt-2">Example:</p>
           <code class="block mt-1 p-2 bg-white rounded">
-            name,email,role<br />
-            John Doe,john@example.com,student<br />
-            Jane Smith,jane@example.com,ta<br />
-            Admin User,admin@example.com,admin
+            name,email<br />
+            John Doe,john@example.com<br />
+            Jane Smith,jane@example.com
           </code>
         </div>
 
@@ -189,25 +178,12 @@
                 <tr>
                   <th class="px-3 py-2 text-left">Name</th>
                   <th class="px-3 py-2 text-left">Email</th>
-                  <th class="px-3 py-2 text-left">Role</th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-for="(row, idx) in csvData" :key="idx" class="border-t">
                   <td class="px-3 py-2">{{ row.name }}</td>
                   <td class="px-3 py-2">{{ row.email }}</td>
-                  <td class="px-3 py-2">
-                    <span
-                      class="px-2 py-1 rounded text-xs font-medium"
-                      :class="{
-                        'bg-blue-100 text-blue-800': row.role === 'student',
-                        'bg-green-100 text-green-800': row.role === 'ta',
-                        'bg-purple-100 text-purple-800': row.role === 'admin',
-                      }"
-                    >
-                      {{ row.role }}
-                    </span>
-                  </td>
                 </tr>
               </tbody>
             </table>
@@ -238,7 +214,7 @@
             class="mb-2 p-3 bg-green-50 border border-green-200 rounded"
           >
             <p class="text-green-800 font-semibold">
-              ✓ Successfully uploaded {{ uploadResults.success.length }} users
+              Successfully uploaded {{ uploadResults.success.length }} users
             </p>
           </div>
           <div
@@ -277,31 +253,24 @@
 
 <script setup lang="ts">
 // Admin Users CRUD view
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted } from 'vue'
 import Papa from 'papaparse'
 import AppButton from '../../components/common/AppButton.vue'
 import AppInput from '../../components/common/AppInput.vue'
-import AppSelect from '../../components/common/AppSelect.vue'
+import AppBadge from '../../components/common/AppBadge.vue'
 import AppTable from '../../components/common/AppTable.vue'
 import { getUsers, createUser, updateUser, deleteUser } from '../../api/admin'
-import type { UserResponse, UserRole, UserCreate } from '../../types/api'
+import type { UserResponse, UserCreate } from '../../types/api'
 
 const users = ref<UserResponse[]>([])
-const roleFilter = ref<string>('')
 const showCreate = ref(false)
 const newName = ref('')
 const newEmail = ref('')
-const newRole = ref<UserRole>('student')
+const newIsAdmin = ref(false)
 const editId = ref<number | null>(null)
 const editName = ref('')
 const editEmail = ref('')
-const editRole = ref<UserRole>('student')
-const filteredUsers = computed(() => {
-  if (!roleFilter.value) {
-    return users.value
-  }
-  return users.value.filter((user) => user.role === roleFilter.value)
-})
+const editIsAdmin = ref(false)
 
 // Bulk upload state
 const showBulkUpload = ref(false)
@@ -318,11 +287,11 @@ async function load() {
 onMounted(load)
 
 async function createUserHandler() {
-  if (!newName.value.trim() || !newEmail.value.trim() || !newRole.value) return
-  await createUser({ name: newName.value, email: newEmail.value, role: newRole.value })
+  if (!newName.value.trim() || !newEmail.value.trim()) return
+  await createUser({ name: newName.value, email: newEmail.value, is_admin: newIsAdmin.value })
   newName.value = ''
   newEmail.value = ''
-  newRole.value = 'student'
+  newIsAdmin.value = false
   showCreate.value = false
   await load()
 }
@@ -331,16 +300,16 @@ function startEdit(user: UserResponse) {
   editId.value = user.id
   editName.value = user.name
   editEmail.value = user.email
-  editRole.value = user.role
+  editIsAdmin.value = user.is_admin
 }
 
 async function saveEdit(id: number) {
-  if (!editName.value.trim() || !editEmail.value.trim() || !editRole.value) return
-  await updateUser(id, { name: editName.value, email: editEmail.value, role: editRole.value })
+  if (!editName.value.trim() || !editEmail.value.trim()) return
+  await updateUser(id, { name: editName.value, email: editEmail.value, is_admin: editIsAdmin.value })
   editId.value = null
   editName.value = ''
   editEmail.value = ''
-  editRole.value = 'student'
+  editIsAdmin.value = false
   await load()
 }
 
@@ -348,7 +317,7 @@ function cancelEdit() {
   editId.value = null
   editName.value = ''
   editEmail.value = ''
-  editRole.value = 'student'
+  editIsAdmin.value = false
 }
 
 async function deleteUserHandler(id: number) {
@@ -388,7 +357,6 @@ function handleFileSelect(event: Event) {
 function validateAndLoadCSV(data: Record<string, string>[]) {
   const errors: string[] = []
   const validData: UserCreate[] = []
-  const validRoles: UserRole[] = ['student', 'ta', 'admin']
   const csvEmails = new Set<string>()
   const existingEmails = new Set(users.value.map((u) => u.email.toLowerCase()))
 
@@ -439,24 +407,10 @@ function validateAndLoadCSV(data: Record<string, string>[]) {
     }
     csvEmails.add(email)
 
-    // Validate role
-    if (!row.role || !row.role.trim()) {
-      errors.push(`Row ${rowNum}: 'role' is required`)
-      return
-    }
-
-    const role = row.role.trim().toLowerCase() as UserRole
-    if (!validRoles.includes(role)) {
-      errors.push(
-        `Row ${rowNum}: 'role' must be one of: student, ta, admin (got '${row.role.trim()}')`,
-      )
-      return
-    }
-
     validData.push({
       name: row.name.trim(),
       email: row.email.trim(),
-      role: role,
+      is_admin: false,
     })
   })
 
