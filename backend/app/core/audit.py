@@ -54,6 +54,7 @@ class AuditRecorder:
         request_body: dict | list | None = None,
         before_state: dict | list | None = None,
         after_state: dict | list | None = None,
+        actor_role: str = "admin",
     ) -> None:
         request_id = getattr(self._request.state, "request_id", None)
         client = self._request.client
@@ -62,7 +63,7 @@ class AuditRecorder:
             AuditLog(
                 actor_user_id=(self._actor.id if self._actor else None),
                 actor_email=(self._actor.email if self._actor else None),
-                actor_role=(self._actor.role.value if self._actor else None),
+                actor_role=actor_role,
                 action=action,
                 resource_type=resource_type,
                 resource_id=resource_id,
