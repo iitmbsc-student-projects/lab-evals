@@ -18,6 +18,14 @@ from app.schemas.question import QuestionResponse
 router = APIRouter()
 
 
+def _require_student(db, user_id: int, lab_session_id: int) -> None:
+    if not is_student_on_session(db, user_id, lab_session_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not a student on this session",
+        )
+
+
 # --- List questions for a session's subject ---
 
 
@@ -31,11 +39,7 @@ def list_questions(
 ):
     db = SessionLocal()
     try:
-        if not is_student_on_session(db, current_user.id, lab_session_id):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not a student on this session",
-            )
+        _require_student(db, current_user.id, lab_session_id)
         lab_session = get_session_or_404(db, lab_session_id)
         return (
             db.query(Question)
@@ -59,11 +63,7 @@ def list_evaluations(
 ):
     db = SessionLocal()
     try:
-        if not is_student_on_session(db, current_user.id, lab_session_id):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not a student on this session",
-            )
+        _require_student(db, current_user.id, lab_session_id)
         return (
             db.query(Evaluation)
             .filter(

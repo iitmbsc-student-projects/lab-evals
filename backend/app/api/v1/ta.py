@@ -29,6 +29,22 @@ from app.schemas.user import UserResponse
 router = APIRouter()
 
 
+def _require_ta(db, user_id: int, lab_session_id: int) -> None:
+    if not is_ta_on_session(db, user_id, lab_session_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not a TA on this session",
+        )
+
+
+def _require_open(session) -> None:
+    if not session.accepting_evaluations:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Session is not accepting evaluations",
+        )
+
+
 # --- List students on a session ---
 
 
@@ -42,11 +58,7 @@ def list_students(
 ):
     db = SessionLocal()
     try:
-        if not is_ta_on_session(db, current_user.id, lab_session_id):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not a TA on this session",
-            )
+        _require_ta(db, current_user.id, lab_session_id)
         rows = (
             db.query(User)
             .join(
@@ -78,11 +90,7 @@ def list_questions(
 ):
     db = SessionLocal()
     try:
-        if not is_ta_on_session(db, current_user.id, lab_session_id):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not a TA on this session",
-            )
+        _require_ta(db, current_user.id, lab_session_id)
         lab_session = get_session_or_404(db, lab_session_id)
         return (
             db.query(Question)
@@ -106,11 +114,7 @@ def list_evaluations(
 ):
     db = SessionLocal()
     try:
-        if not is_ta_on_session(db, current_user.id, lab_session_id):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not a TA on this session",
-            )
+        _require_ta(db, current_user.id, lab_session_id)
         return (
             db.query(Evaluation)
             .filter(
@@ -139,17 +143,9 @@ def create_evaluation(
 ):
     db = SessionLocal()
     try:
-        if not is_ta_on_session(db, current_user.id, lab_session_id):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not a TA on this session",
-            )
+        _require_ta(db, current_user.id, lab_session_id)
         lab_session = get_session_or_404(db, lab_session_id)
-        if not lab_session.accepting_evaluations:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Session is not accepting evaluations",
-            )
+        _require_open(lab_session)
         if evaluation.lab_session_id != lab_session_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -236,17 +232,9 @@ def update_evaluation(
 ):
     db = SessionLocal()
     try:
-        if not is_ta_on_session(db, current_user.id, lab_session_id):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not a TA on this session",
-            )
+        _require_ta(db, current_user.id, lab_session_id)
         lab_session = get_session_or_404(db, lab_session_id)
-        if not lab_session.accepting_evaluations:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Session is not accepting evaluations",
-            )
+        _require_open(lab_session)
         db_obj = (
             db.query(Evaluation)
             .filter_by(
@@ -297,17 +285,9 @@ def delete_evaluation(
 ):
     db = SessionLocal()
     try:
-        if not is_ta_on_session(db, current_user.id, lab_session_id):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not a TA on this session",
-            )
+        _require_ta(db, current_user.id, lab_session_id)
         lab_session = get_session_or_404(db, lab_session_id)
-        if not lab_session.accepting_evaluations:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Session is not accepting evaluations",
-            )
+        _require_open(lab_session)
         db_obj = (
             db.query(Evaluation)
             .filter_by(
