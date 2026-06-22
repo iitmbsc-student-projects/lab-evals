@@ -6,14 +6,12 @@ from datetime import datetime
 
 from pydantic import BaseModel, EmailStr
 
-from app.constants.enums import UserRole
-
 
 class UserBase(BaseModel):
     name: str
     email: EmailStr
     google_sub: str | None = None
-    role: UserRole
+    is_admin: bool = False
 
     class Config:
         extra = "forbid"
@@ -31,7 +29,7 @@ class UserPartialUpdate(BaseModel):
     name: str | None = None
     email: EmailStr | None = None
     google_sub: str | None = None
-    role: UserRole | None = None
+    is_admin: bool | None = None
 
     class Config:
         extra = "forbid"
