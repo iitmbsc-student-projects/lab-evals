@@ -10,41 +10,32 @@ const routes = [
     component: LoginView,
     meta: { public: true },
   },
+  {
+    path: '/',
+    component: () => import('../views/PortalView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/sessions/:sessionId',
+    component: () => import('../views/SessionView.vue'),
+    meta: { requiresAuth: true },
+  },
   // Admin
   {
     path: '/admin',
     component: () => import('../components/layout/AdminLayout.vue'),
-    meta: { role: 'admin' },
+    meta: { admin: true },
     children: [
       { path: 'subjects', component: () => import('../views/admin/SubjectsView.vue') },
       { path: 'questions', component: () => import('../views/admin/QuestionsView.vue') },
       { path: 'users', component: () => import('../views/admin/UsersView.vue') },
-      { path: 'enrollments', component: () => import('../views/admin/EnrollmentsView.vue') },
+      { path: 'lab-sessions', component: () => import('../views/admin/LabSessionsView.vue') },
+      {
+        path: 'session-assignments',
+        component: () => import('../views/admin/SessionAssignmentsView.vue'),
+      },
       { path: 'evaluations', component: () => import('../views/admin/EvaluationsView.vue') },
       { path: 'audit', component: () => import('../views/admin/AuditView.vue') },
-    ],
-  },
-  // TA
-  {
-    path: '/ta',
-    component: () => import('../components/layout/TALayout.vue'),
-    meta: { role: 'ta' },
-    children: [
-      { path: 'profile', component: () => import('../views/ta/ProfileView.vue') },
-      { path: 'students', component: () => import('../views/ta/StudentsView.vue') },
-      { path: 'subjects', component: () => import('../views/ta/SubjectsView.vue') },
-      { path: 'questions', component: () => import('../views/ta/QuestionsView.vue') },
-      { path: 'evaluations', component: () => import('../views/ta/EvaluationsView.vue') },
-    ],
-  },
-  // Student
-  {
-    path: '/student',
-    component: () => import('../components/layout/StudentLayout.vue'),
-    meta: { role: 'student' },
-    children: [
-      { path: 'profile', component: () => import('../views/student/ProfileView.vue') },
-      { path: 'questions', component: () => import('../views/student/QuestionsView.vue') },
     ],
   },
   // Default redirect
@@ -57,11 +48,11 @@ const router = createRouter({
 })
 
 // RBAC navigation guard
-router.beforeEach((to, from, next) => {
+router.beforeEach((to, _from, next) => {
   const auth = useAuthStore()
   if (to.meta.public) return next()
-  if (!auth.token || !auth.role) return next('/login')
-  if (to.meta.role && to.meta.role !== auth.role) return next('/login')
+  if (!auth.token) return next('/login')
+  if (to.meta.admin && !auth.is_admin) return next('/')
   next()
 })
 
