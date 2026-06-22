@@ -85,8 +85,9 @@
 
       <!-- Evaluations table -->
       <div class="bg-white rounded-xl border border-zinc-200 shadow-sm overflow-hidden">
-        <div class="px-6 py-4 border-b border-zinc-100">
+        <div class="px-6 py-4 border-b border-zinc-100 flex items-center justify-between">
           <h3 class="text-base font-semibold text-zinc-900">My Evaluations</h3>
+          <p v-if="updateError || deleteError" class="text-sm text-red-600">{{ updateError || deleteError }}</p>
         </div>
         <AppTable :isEmpty="evaluations.length === 0" emptyMessage="No evaluations yet.">
           <template #head>
@@ -175,6 +176,7 @@ import AppTable from '../common/AppTable.vue'
 import AppCombobox from '../common/AppCombobox.vue'
 import AppSelect from '../common/AppSelect.vue'
 import AppInput from '../common/AppInput.vue'
+import { formatDate } from '@/utils/date'
 
 const props = defineProps<{ session: MySession }>()
 
@@ -183,6 +185,8 @@ const creating = ref(false)
 const saving = ref(false)
 const deleting = ref<number | null>(null)
 const createError = ref('')
+const updateError = ref('')
+const deleteError = ref('')
 
 const students = ref<UserResponse[]>([])
 const questions = ref<QuestionResponse[]>([])
@@ -236,11 +240,6 @@ function questionText(id: number): string {
   return questions.value.find((q) => q.id === id)?.text ?? String(id)
 }
 
-function formatDate(dateStr: string): string {
-  const d = new Date(dateStr)
-  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })
-}
-
 async function handleCreate() {
   if (!canSubmit.value) return
   createError.value = ''
@@ -273,6 +272,7 @@ function cancelEdit() {
 
 async function handleUpdate(id: number) {
   if (editForm.value.marking === null) return
+  updateError.value = ''
   saving.value = true
   try {
     const updated = await updateEvaluation(props.session.lab_session_id, id, {
@@ -282,16 +282,21 @@ async function handleUpdate(id: number) {
     const idx = evaluations.value.findIndex((e) => e.id === id)
     if (idx !== -1) evaluations.value[idx] = updated
     editingId.value = null
+  } catch (e: unknown) {
+    updateError.value = e instanceof Error ? e.message : 'Failed to update evaluation.'
   } finally {
     saving.value = false
   }
 }
 
 async function handleDelete(id: number) {
+  deleteError.value = ''
   deleting.value = id
   try {
     await deleteEvaluation(props.session.lab_session_id, id)
     evaluations.value = evaluations.value.filter((e) => e.id !== id)
+  } catch (e: unknown) {
+    deleteError.value = e instanceof Error ? e.message : 'Failed to delete evaluation.'
   } finally {
     deleting.value = null
   }

@@ -56,6 +56,7 @@ import { getQuestions, getEvaluations } from '../../api/student'
 import AppSpinner from '../common/AppSpinner.vue'
 import AppTable from '../common/AppTable.vue'
 import AppBadge from '../common/AppBadge.vue'
+import { formatDate } from '@/utils/date'
 
 const props = defineProps<{ session: MySession }>()
 
@@ -65,11 +66,6 @@ const evaluations = ref<StudentEvaluationResponse[]>([])
 
 function isEvaluated(questionId: number): boolean {
   return evaluations.value.some((e) => e.question_id === questionId)
-}
-
-function formatDate(dateStr: string): string {
-  const d = new Date(dateStr)
-  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })
 }
 
 onMounted(async () => {

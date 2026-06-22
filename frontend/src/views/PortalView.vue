@@ -64,15 +64,11 @@ import { getMySessions } from '../api/auth'
 import type { MySession } from '../types/api'
 import AppSpinner from '../components/common/AppSpinner.vue'
 import AppBadge from '../components/common/AppBadge.vue'
+import { formatDate } from '@/utils/date'
 
 const router = useRouter()
 const sessions = ref<MySession[]>([])
 const loading = ref(true)
-
-function formatDate(dateStr: string): string {
-  const d = new Date(dateStr)
-  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })
-}
 
 onMounted(async () => {
   try {
