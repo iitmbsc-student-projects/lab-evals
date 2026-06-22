@@ -8,9 +8,6 @@ import type {
   TAEvaluationUpdate,
 } from '../types/api'
 
-// Get own user info
-export const getMe = async (): Promise<UserResponse> => (await api.get('/user/me')).data
-
 // List students assigned to a session
 export const getStudents = async (sessionId: number): Promise<UserResponse[]> =>
   (await api.get(`/ta/sessions/${sessionId}/students`)).data

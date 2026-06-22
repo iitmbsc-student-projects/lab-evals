@@ -243,6 +243,8 @@ function questionText(id: number): string {
 async function handleCreate() {
   if (!canSubmit.value) return
   createError.value = ''
+  updateError.value = ''
+  deleteError.value = ''
   creating.value = true
   try {
     const created = await createEvaluation(props.session.lab_session_id, {
@@ -272,7 +274,9 @@ function cancelEdit() {
 
 async function handleUpdate(id: number) {
   if (editForm.value.marking === null) return
+  createError.value = ''
   updateError.value = ''
+  deleteError.value = ''
   saving.value = true
   try {
     const updated = await updateEvaluation(props.session.lab_session_id, id, {
@@ -290,6 +294,8 @@ async function handleUpdate(id: number) {
 }
 
 async function handleDelete(id: number) {
+  createError.value = ''
+  updateError.value = ''
   deleteError.value = ''
   deleting.value = id
   try {
