@@ -725,6 +725,61 @@ def delete_session_assignment(
 # --- Evaluation Oversight Endpoints ---
 
 
+def _validate_evaluation_refs(db, evaluation) -> None:
+    """Validate lab session, question, student, and TA references.
+
+    Raises HTTPException (400/404) on any failure.
+    Does NOT check uniqueness — that is the caller's responsibility.
+    """
+    session = (
+        db.query(LabSession).filter_by(id=evaluation.lab_session_id).first()
+    )
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Lab session does not exist",
+        )
+    question = db.query(Question).filter_by(id=evaluation.question_id).first()
+    if not question:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Question does not exist",
+        )
+    if question.subject_id != session.subject_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=("Question does not belong to the session's subject"),
+        )
+    student_assignment = (
+        db.query(SessionAssignment)
+        .filter_by(
+            lab_session_id=evaluation.lab_session_id,
+            user_id=evaluation.student_id,
+            role=SubjectRole.student,
+        )
+        .first()
+    )
+    if not student_assignment:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=("Student is not assigned to this session as a student"),
+        )
+    ta_assignment = (
+        db.query(SessionAssignment)
+        .filter_by(
+            lab_session_id=evaluation.lab_session_id,
+            user_id=evaluation.ta_id,
+            role=SubjectRole.ta,
+        )
+        .first()
+    )
+    if not ta_assignment:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="TA is not assigned to this session as a TA",
+        )
+
+
 @router.get("/evaluations", response_model=list[EvaluationResponse])
 def list_evaluations():
     db = SessionLocal()
@@ -741,59 +796,7 @@ def create_evaluation(
 ):
     db = SessionLocal()
     try:
-        session = (
-            db.query(LabSession)
-            .filter_by(id=evaluation.lab_session_id)
-            .first()
-        )
-        if not session:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Lab session does not exist",
-            )
-        question = (
-            db.query(Question).filter_by(id=evaluation.question_id).first()
-        )
-        if not question:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Question does not exist",
-            )
-        if question.subject_id != session.subject_id:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=("Question does not belong to the session's subject"),
-            )
-        student_assignment = (
-            db.query(SessionAssignment)
-            .filter_by(
-                lab_session_id=evaluation.lab_session_id,
-                user_id=evaluation.student_id,
-                role=SubjectRole.student,
-            )
-            .first()
-        )
-        if not student_assignment:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    "Student is not assigned to this session as a student"
-                ),
-            )
-        ta_assignment = (
-            db.query(SessionAssignment)
-            .filter_by(
-                lab_session_id=evaluation.lab_session_id,
-                user_id=evaluation.ta_id,
-                role=SubjectRole.ta,
-            )
-            .first()
-        )
-        if not ta_assignment:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="TA is not assigned to this session as a TA",
-            )
+        _validate_evaluation_refs(db, evaluation)
         exists = (
             db.query(Evaluation)
             .filter_by(
@@ -848,59 +851,7 @@ def update_evaluation(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Evaluation not found",
             )
-        session = (
-            db.query(LabSession)
-            .filter_by(id=evaluation.lab_session_id)
-            .first()
-        )
-        if not session:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Lab session does not exist",
-            )
-        question = (
-            db.query(Question).filter_by(id=evaluation.question_id).first()
-        )
-        if not question:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Question does not exist",
-            )
-        if question.subject_id != session.subject_id:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=("Question does not belong to the session's subject"),
-            )
-        student_assignment = (
-            db.query(SessionAssignment)
-            .filter_by(
-                lab_session_id=evaluation.lab_session_id,
-                user_id=evaluation.student_id,
-                role=SubjectRole.student,
-            )
-            .first()
-        )
-        if not student_assignment:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    "Student is not assigned to this session as a student"
-                ),
-            )
-        ta_assignment = (
-            db.query(SessionAssignment)
-            .filter_by(
-                lab_session_id=evaluation.lab_session_id,
-                user_id=evaluation.ta_id,
-                role=SubjectRole.ta,
-            )
-            .first()
-        )
-        if not ta_assignment:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="TA is not assigned to this session as a TA",
-            )
+        _validate_evaluation_refs(db, evaluation)
         before = snapshot(db_obj)
         db_obj.lab_session_id = evaluation.lab_session_id
         db_obj.student_id = evaluation.student_id
