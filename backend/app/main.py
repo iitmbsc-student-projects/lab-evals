@@ -10,7 +10,6 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1 import admin, auth, student, ta, user
-from app.constants.enums import UserRole
 from app.core.config import get_settings
 from app.core.database import Base, SessionLocal, engine
 from app.models.user import User
@@ -26,17 +25,19 @@ async def lifespan(app: FastAPI):
     # Auto-create admin user on startup
     db = SessionLocal()
     try:
-        admin = db.query(User).filter_by(email=settings.ADMIN_EMAIL).first()
-        if not admin:
-            admin = User(
+        admin_user = (
+            db.query(User).filter_by(email=settings.ADMIN_EMAIL).first()
+        )
+        if not admin_user:
+            admin_user = User(
                 name=settings.ADMIN_NAME,
                 email=settings.ADMIN_EMAIL,
-                role=UserRole.admin,
+                is_admin=True,
             )
-            db.add(admin)
+            db.add(admin_user)
             db.commit()
         else:
-            admin.role = UserRole.admin
+            admin_user.is_admin = True
             db.commit()
     finally:
         db.close()
