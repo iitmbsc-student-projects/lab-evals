@@ -1,6 +1,6 @@
 <!--
   SessionAssignmentsView.vue (Admin)
-  Admin can view, create, and delete session assignments. Supports CSV bulk upload for students.
+  Admin can view, create, and delete session assignments. Supports CSV bulk upload (students or TAs).
 -->
 <template>
   <div>
@@ -34,7 +34,7 @@
     <AppTable
       v-else
       :isEmpty="selectedSessionAssignments.length === 0"
-      emptyMessage="No assignments for this session. Add users or bulk upload students."
+      emptyMessage="No assignments for this session. Add users or bulk upload a roster."
     >
       <template #head>
         <th>ID</th>
@@ -112,7 +112,7 @@
         class="bg-white p-6 rounded-lg shadow-xl w-full max-w-3xl max-h-[85vh] overflow-auto animate-in fade-in zoom-in duration-200"
       >
         <div class="flex justify-between items-center mb-4">
-          <h3 class="text-lg font-semibold text-zinc-900">Bulk Upload Students</h3>
+          <h3 class="text-lg font-semibold text-zinc-900">Bulk Upload Users</h3>
           <button
             @click="showBulkUpload = false"
             class="text-zinc-400 hover:text-zinc-600 transition-colors"
@@ -137,13 +137,25 @@
           </p>
         </div>
 
+        <AppSelect
+          v-model="bulkRole"
+          label="Assign all uploaded users as"
+          :disabled="isUploading"
+          class="mb-4 max-w-xs"
+        >
+          <option value="student">student</option>
+          <option value="ta">ta</option>
+        </AppSelect>
+
         <div class="mb-4 p-3 bg-blue-50 border border-blue-200 rounded text-sm">
           <p class="font-semibold mb-1">CSV Format:</p>
           <p>Your CSV file should have a single column with user emails (one per row):</p>
           <ul class="list-disc list-inside mt-1">
             <li><strong>email</strong> (required): Email address of the user</li>
           </ul>
-          <p class="mt-1 text-zinc-600">Users are assigned as students by default.</p>
+          <p class="mt-1 text-zinc-600">
+            Every uploaded user is assigned with the role selected above.
+          </p>
           <p class="mt-2">Example:</p>
           <code class="block mt-1 p-2 bg-white rounded">
             email<br />
@@ -173,7 +185,7 @@
 
         <!-- Preview Table -->
         <div v-if="csvData.length > 0 && validationErrors.length === 0" class="mb-4">
-          <p class="font-semibold mb-2">Preview ({{ csvData.length }} students):</p>
+          <p class="font-semibold mb-2">Preview ({{ csvData.length }} users as {{ bulkRole }}):</p>
           <div class="border rounded max-h-60 overflow-auto">
             <table class="w-full text-sm">
               <thead class="bg-gray-50 sticky top-0">
@@ -216,7 +228,7 @@
             class="mb-2 p-3 bg-green-50 border border-green-200 rounded"
           >
             <p class="text-green-800 font-semibold">
-              Successfully added {{ uploadResults.success.length }} students
+              Successfully added {{ uploadResults.success.length }} users
             </p>
           </div>
           <div
@@ -245,7 +257,7 @@
             @click="startUpload"
             :disabled="isUploading"
           >
-            Upload {{ csvData.length }} Students
+            Upload {{ csvData.length }} Users
           </AppButton>
         </div>
       </div>
@@ -290,6 +302,7 @@ const newRole = ref<SubjectRole>('student')
 
 // Bulk upload state
 const showBulkUpload = ref(false)
+const bulkRole = ref<SubjectRole>('student')
 const fileInput = ref<HTMLInputElement | null>(null)
 const csvData = ref<SessionAssignmentCreate[]>([])
 const validationErrors = ref<string[]>([])
@@ -463,7 +476,7 @@ function validateAndLoadCSV(data: Record<string, string>[]) {
     validData.push({
       lab_session_id: sessionId,
       user_id: user.id,
-      role: 'student',
+      role: bulkRole.value,
     })
   })
 
@@ -487,8 +500,8 @@ async function startUpload() {
     const userName = user?.name || String(assignment.user_id)
 
     try {
-      await createSessionAssignment(assignment)
-      uploadResults.value.success.push(`${userName} added as student`)
+      await createSessionAssignment({ ...assignment, role: bulkRole.value })
+      uploadResults.value.success.push(`${userName} added as ${bulkRole.value}`)
       uploadProgress.value.current++
     } catch (error: unknown) {
       let errorMessage = 'Unknown error'
@@ -509,6 +522,7 @@ async function startUpload() {
 
 function closeBulkUpload() {
   showBulkUpload.value = false
+  bulkRole.value = 'student'
   csvData.value = []
   validationErrors.value = []
   uploadResults.value = { success: [], errors: [] }
