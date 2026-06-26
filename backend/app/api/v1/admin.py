@@ -457,7 +457,7 @@ def create_lab_session(
             action="lab_session.create",
             resource_type="lab_session",
             resource_id=db_obj.id,
-            request_body=session.model_dump(),
+            request_body=session.model_dump(mode="json"),
             after_state=snapshot(db_obj),
             actor_role="admin",
         )
@@ -517,7 +517,7 @@ def update_lab_session(
             action="lab_session.update",
             resource_type="lab_session",
             resource_id=db_obj.id,
-            request_body=session.model_dump(),
+            request_body=session.model_dump(mode="json"),
             before_state=before,
             after_state=snapshot(db_obj),
             actor_role="admin",

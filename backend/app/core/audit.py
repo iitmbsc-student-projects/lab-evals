@@ -7,7 +7,7 @@ the transaction with the business mutation: both commit or both
 roll back, ensuring no orphan audit entries.
 """
 
-from datetime import datetime
+from datetime import date, datetime
 from enum import Enum
 
 from fastapi import Depends, Request
@@ -21,7 +21,7 @@ from app.models.user import User
 def snapshot(db_obj) -> dict:
     """Serialize a SQLAlchemy model row to a JSON-safe dict.
 
-    Converts datetime -> ISO 8601 string and Enum -> .value.
+    Converts datetime/date -> ISO 8601 string and Enum -> .value.
     Other JSON-native types (str, int, bool, None, dict, list)
     pass through unchanged. Reads in-memory attribute values, so
     columns populated by ``onupdate=`` server defaults won't reflect
@@ -31,7 +31,7 @@ def snapshot(db_obj) -> dict:
     result: dict = {}
     for col in db_obj.__table__.columns:
         value = getattr(db_obj, col.name)
-        if isinstance(value, datetime):
+        if isinstance(value, (datetime, date)):
             value = value.isoformat()
         elif isinstance(value, Enum):
             value = value.value
