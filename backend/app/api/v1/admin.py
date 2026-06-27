@@ -136,7 +136,9 @@ def update_subject(
         db.close()
 
 
-@router.delete("/subjects/{subject_id}")
+@router.delete(
+    "/subjects/{subject_id}", status_code=status.HTTP_204_NO_CONTENT
+)
 def delete_subject(
     subject_id: int,
     audit: AuditRecorder = Depends(get_audit_recorder),
@@ -160,7 +162,7 @@ def delete_subject(
             actor_role="admin",
         )
         db.commit()
-        return {}, status.HTTP_204_NO_CONTENT
+        return None
     finally:
         db.close()
 
@@ -264,7 +266,9 @@ def update_question(
         db.close()
 
 
-@router.delete("/questions/{question_id}")
+@router.delete(
+    "/questions/{question_id}", status_code=status.HTTP_204_NO_CONTENT
+)
 def delete_question(
     question_id: int,
     audit: AuditRecorder = Depends(get_audit_recorder),
@@ -288,7 +292,7 @@ def delete_question(
             actor_role="admin",
         )
         db.commit()
-        return {}, status.HTTP_204_NO_CONTENT
+        return None
     finally:
         db.close()
 
@@ -386,7 +390,7 @@ def update_user(
         db.close()
 
 
-@router.delete("/users/{user_id}")
+@router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_user(
     user_id: int,
     audit: AuditRecorder = Depends(get_audit_recorder),
@@ -409,7 +413,7 @@ def delete_user(
             actor_role="admin",
         )
         db.commit()
-        return {}, status.HTTP_204_NO_CONTENT
+        return None
     finally:
         db.close()
 
@@ -509,6 +513,20 @@ def update_lab_session(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Lab session not found",
             )
+        exists = (
+            db.query(LabSession)
+            .filter(
+                LabSession.subject_id == db_obj.subject_id,
+                LabSession.date == session.date,
+                LabSession.id != session_id,
+            )
+            .first()
+        )
+        if exists:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Lab session already exists for this subject and date",
+            )
         before = snapshot(db_obj)
         db_obj.date = session.date
         db_obj.accepting_evaluations = session.accepting_evaluations
@@ -529,7 +547,9 @@ def update_lab_session(
         db.close()
 
 
-@router.delete("/lab-sessions/{session_id}")
+@router.delete(
+    "/lab-sessions/{session_id}", status_code=status.HTTP_204_NO_CONTENT
+)
 def delete_lab_session(
     session_id: int,
     audit: AuditRecorder = Depends(get_audit_recorder),
@@ -553,7 +573,7 @@ def delete_lab_session(
             actor_role="admin",
         )
         db.commit()
-        return {}, status.HTTP_204_NO_CONTENT
+        return None
     finally:
         db.close()
 
@@ -691,7 +711,10 @@ def list_session_assignments(lab_session_id: int | None = None):
         db.close()
 
 
-@router.delete("/session-assignments/{assignment_id}")
+@router.delete(
+    "/session-assignments/{assignment_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
 def delete_session_assignment(
     assignment_id: int,
     audit: AuditRecorder = Depends(get_audit_recorder),
@@ -717,7 +740,7 @@ def delete_session_assignment(
             actor_role="admin",
         )
         db.commit()
-        return {}, status.HTTP_204_NO_CONTENT
+        return None
     finally:
         db.close()
 
@@ -852,6 +875,21 @@ def update_evaluation(
                 detail="Evaluation not found",
             )
         _validate_evaluation_refs(db, evaluation)
+        exists = (
+            db.query(Evaluation)
+            .filter(
+                Evaluation.lab_session_id == evaluation.lab_session_id,
+                Evaluation.student_id == evaluation.student_id,
+                Evaluation.question_id == evaluation.question_id,
+                Evaluation.id != evaluation_id,
+            )
+            .first()
+        )
+        if exists:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Evaluation already exists for this data",
+            )
         before = snapshot(db_obj)
         db_obj.lab_session_id = evaluation.lab_session_id
         db_obj.student_id = evaluation.student_id
@@ -877,7 +915,9 @@ def update_evaluation(
         db.close()
 
 
-@router.delete("/evaluations/{evaluation_id}")
+@router.delete(
+    "/evaluations/{evaluation_id}", status_code=status.HTTP_204_NO_CONTENT
+)
 def delete_evaluation(
     evaluation_id: int,
     audit: AuditRecorder = Depends(get_audit_recorder),
@@ -901,7 +941,7 @@ def delete_evaluation(
             actor_role="admin",
         )
         db.commit()
-        return {}, status.HTTP_204_NO_CONTENT
+        return None
     finally:
         db.close()
 

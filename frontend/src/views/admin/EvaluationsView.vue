@@ -109,7 +109,6 @@
           label="Lab Session"
           required
           class="mb-3"
-          @change="onSessionChange"
         >
           <option :value="null">-- Select Lab Session --</option>
           <option v-for="session in labSessions" :key="session.id" :value="session.id">
@@ -165,7 +164,7 @@
 
 <script setup lang="ts">
 // Admin Evaluations CRUD view
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import AppButton from '../../components/common/AppButton.vue'
 import AppInput from '../../components/common/AppInput.vue'
 import AppSelect from '../../components/common/AppSelect.vue'
@@ -282,6 +281,12 @@ const sessionQuestionOptions = computed(() => {
   const session = labSessions.value.find((s) => s.id === newLabSessionId.value)
   if (!session) return []
   return questions.value.filter((q) => q.subject_id === session.subject_id)
+})
+
+// Reset dependent pickers + reload the roster whenever the session changes
+// (watch, not @change, so programmatic changes are handled too).
+watch(newLabSessionId, () => {
+  onSessionChange()
 })
 
 async function onSessionChange() {

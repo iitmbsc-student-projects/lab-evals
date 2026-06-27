@@ -159,7 +159,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import type { MySession, UserResponse, QuestionResponse, TAEvaluationResponse, Marking } from '../../types/api'
 import {
   getStudents,
@@ -204,6 +204,18 @@ const form = ref<{
   marking: null,
   remarks: '',
 })
+
+// Reset the question/marks when the student changes: the question list is
+// filtered per student, so a stale question_id could be already-evaluated
+// for the newly selected student and get rejected (400) on submit.
+watch(
+  () => form.value.student_id,
+  () => {
+    form.value.question_id = null
+    form.value.marking = null
+    form.value.remarks = ''
+  },
+)
 
 // Edit state
 const editingId = ref<number | null>(null)
