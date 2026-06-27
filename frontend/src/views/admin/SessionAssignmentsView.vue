@@ -10,7 +10,7 @@
         <p class="text-sm text-zinc-600 mt-1">Manage per-session rosters (students and TAs)</p>
       </div>
       <div class="flex flex-wrap gap-2">
-        <AppButton :disabled="!selectedSessionId" @click="showAdd = true">Add Assignment</AppButton>
+        <AppButton :disabled="!selectedSessionId" @click="openAdd">Add Assignment</AppButton>
         <AppButton :disabled="!selectedSessionId" @click="showBulkUpload = true" variant="secondary"
           >Bulk Upload CSV</AppButton
         >
@@ -25,6 +25,22 @@
           {{ sessionLabel(session) }}
         </option>
       </AppSelect>
+    </div>
+
+    <div
+      v-if="actionError"
+      class="mb-4 p-3 bg-red-50 border border-red-200 rounded flex items-start justify-between gap-3"
+    >
+      <p class="text-sm text-red-700">{{ actionError }}</p>
+      <button
+        @click="actionError = ''"
+        class="text-red-400 hover:text-red-600 transition-colors shrink-0"
+        aria-label="Dismiss error"
+      >
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
     </div>
 
     <div v-if="!selectedSessionId" class="text-zinc-500 text-sm py-8 text-center">
@@ -96,6 +112,7 @@
           <option value="student">student</option>
           <option value="ta">ta</option>
         </AppSelect>
+        <p v-if="addError" class="text-sm text-red-600 mb-2">{{ addError }}</p>
         <div class="flex gap-2 mt-6 justify-end">
           <AppButton @click="showAdd = false" variant="ghost">Cancel</AppButton>
           <AppButton @click="addAssignmentHandler">Add</AppButton>
@@ -290,6 +307,7 @@ import type {
   UserResponse,
   SubjectRole,
 } from '../../types/api'
+import { apiErrorMessage } from '../../utils/errors'
 
 const assignments = ref<SessionAssignment[]>([])
 const labSessions = ref<LabSession[]>([])
@@ -299,6 +317,8 @@ const selectedSessionId = ref<number | null>(null)
 const showAdd = ref(false)
 const newUserId = ref<number | null>(null)
 const newRole = ref<SubjectRole>('student')
+const addError = ref('')
+const actionError = ref('')
 
 // Bulk upload state
 const showBulkUpload = ref(false)
@@ -370,13 +390,24 @@ watch(selectedSessionId, async () => {
   await loadAssignments()
 })
 
+function openAdd() {
+  addError.value = ''
+  showAdd.value = true
+}
+
 async function addAssignmentHandler() {
   if (!selectedSessionId.value || !newUserId.value) return
-  await createSessionAssignment({
-    lab_session_id: selectedSessionId.value,
-    user_id: newUserId.value,
-    role: newRole.value,
-  })
+  addError.value = ''
+  try {
+    await createSessionAssignment({
+      lab_session_id: selectedSessionId.value,
+      user_id: newUserId.value,
+      role: newRole.value,
+    })
+  } catch (e) {
+    addError.value = apiErrorMessage(e)
+    return
+  }
   newUserId.value = null
   newRole.value = 'student'
   showAdd.value = false
@@ -387,7 +418,13 @@ async function deleteAssignmentHandler(id: number) {
   if (!confirm('Are you sure you want to remove this assignment? This action cannot be undone.')) {
     return
   }
-  await deleteSessionAssignment(id)
+  actionError.value = ''
+  try {
+    await deleteSessionAssignment(id)
+  } catch (e) {
+    actionError.value = apiErrorMessage(e)
+    return
+  }
   await loadAssignments()
 }
 

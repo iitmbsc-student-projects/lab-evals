@@ -9,7 +9,7 @@
         <h2 class="text-2xl font-bold text-zinc-900">Evaluations</h2>
         <p class="text-sm text-zinc-600 mt-1">Manage all evaluations (admin override)</p>
       </div>
-      <AppButton class="self-start sm:self-auto shrink-0" @click="showCreate = true"
+      <AppButton class="self-start sm:self-auto shrink-0" @click="openCreate"
         >Add Evaluation</AppButton
       >
     </div>
@@ -21,6 +21,21 @@
           {{ subject.name }}
         </option>
       </AppSelect>
+    </div>
+    <div
+      v-if="actionError"
+      class="mb-4 p-3 bg-red-50 border border-red-200 rounded flex items-start justify-between gap-3"
+    >
+      <p class="text-sm text-red-700">{{ actionError }}</p>
+      <button
+        @click="actionError = ''"
+        class="text-red-400 hover:text-red-600 transition-colors shrink-0"
+        aria-label="Dismiss error"
+      >
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
     </div>
     <AppTable
       :isEmpty="filteredEvaluations.length === 0"
@@ -153,6 +168,7 @@
           <option v-for="n in 5" :key="n" :value="n">{{ n }} / 5</option>
         </AppSelect>
         <AppInput v-model="newRemarks" placeholder="Remarks (optional)" label="Remarks" />
+        <p v-if="createError" class="text-sm text-red-600 mt-3">{{ createError }}</p>
         <div class="flex gap-2 mt-6 justify-end">
           <AppButton @click="showCreate = false" variant="ghost">Cancel</AppButton>
           <AppButton @click="createEvaluationHandler">Create Evaluation</AppButton>
@@ -190,6 +206,7 @@ import type {
   LabSession,
   SessionAssignment,
 } from '../../types/api'
+import { apiErrorMessage } from '../../utils/errors'
 
 const evaluations = ref<EvaluationResponse[]>([])
 const users = ref<UserResponse[]>([])
@@ -197,6 +214,8 @@ const questions = ref<QuestionResponse[]>([])
 const subjects = ref<SubjectResponse[]>([])
 const labSessions = ref<LabSession[]>([])
 const showCreate = ref(false)
+const createError = ref('')
+const actionError = ref('')
 const newLabSessionId = ref<number | null>(null)
 const newStudentId = ref<number | null>(null)
 const newQuestionId = ref<number | null>(null)
@@ -304,6 +323,11 @@ async function onSessionChange() {
   }
 }
 
+function openCreate() {
+  createError.value = ''
+  showCreate.value = true
+}
+
 async function createEvaluationHandler() {
   if (
     !newLabSessionId.value ||
@@ -313,14 +337,20 @@ async function createEvaluationHandler() {
     !newMarking.value
   )
     return
-  await createEvaluation({
-    lab_session_id: newLabSessionId.value,
-    student_id: newStudentId.value,
-    question_id: newQuestionId.value,
-    ta_id: newTaId.value,
-    marking: newMarking.value,
-    remarks: newRemarks.value || null,
-  })
+  createError.value = ''
+  try {
+    await createEvaluation({
+      lab_session_id: newLabSessionId.value,
+      student_id: newStudentId.value,
+      question_id: newQuestionId.value,
+      ta_id: newTaId.value,
+      marking: newMarking.value,
+      remarks: newRemarks.value || null,
+    })
+  } catch (e) {
+    createError.value = apiErrorMessage(e)
+    return
+  }
   newLabSessionId.value = null
   newStudentId.value = null
   newQuestionId.value = null
@@ -341,14 +371,20 @@ function startEdit(evaluation: EvaluationResponse) {
 async function saveEdit(id: number) {
   const ev = evaluations.value.find((e) => e.id === id)
   if (!ev) return
-  await updateEvaluation(id, {
-    lab_session_id: ev.lab_session_id,
-    student_id: ev.student_id,
-    question_id: ev.question_id,
-    ta_id: ev.ta_id,
-    marking: editMarking.value,
-    remarks: editRemarks.value || null,
-  })
+  actionError.value = ''
+  try {
+    await updateEvaluation(id, {
+      lab_session_id: ev.lab_session_id,
+      student_id: ev.student_id,
+      question_id: ev.question_id,
+      ta_id: ev.ta_id,
+      marking: editMarking.value,
+      remarks: editRemarks.value || null,
+    })
+  } catch (e) {
+    actionError.value = apiErrorMessage(e)
+    return
+  }
   editId.value = null
   editMarking.value = 5
   editRemarks.value = ''
@@ -365,7 +401,13 @@ async function deleteEvaluationHandler(id: number) {
   if (!confirm('Are you sure you want to delete this evaluation? This action cannot be undone.')) {
     return
   }
-  await deleteEvaluation(id)
+  actionError.value = ''
+  try {
+    await deleteEvaluation(id)
+  } catch (e) {
+    actionError.value = apiErrorMessage(e)
+    return
+  }
   await load()
 }
 </script>

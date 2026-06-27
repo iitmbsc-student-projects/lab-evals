@@ -9,7 +9,7 @@
         <h2 class="text-2xl font-bold text-zinc-900">Lab Sessions</h2>
         <p class="text-sm text-zinc-600 mt-1">Manage lab sessions per subject</p>
       </div>
-      <AppButton class="self-start sm:self-auto shrink-0" @click="showCreate = true"
+      <AppButton class="self-start sm:self-auto shrink-0" @click="openCreate"
         >Add Lab Session</AppButton
       >
     </div>
@@ -21,6 +21,22 @@
           {{ subject.name }}
         </option>
       </AppSelect>
+    </div>
+    <!-- Action error banner (edit / open-close / delete) -->
+    <div
+      v-if="actionError"
+      class="mb-4 p-3 bg-red-50 border border-red-200 rounded flex items-start justify-between gap-3"
+    >
+      <p class="text-sm text-red-700">{{ actionError }}</p>
+      <button
+        @click="actionError = ''"
+        class="text-red-400 hover:text-red-600 transition-colors shrink-0"
+        aria-label="Dismiss error"
+      >
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
     </div>
     <AppTable
       :isEmpty="filteredSessions.length === 0"
@@ -134,6 +150,7 @@
           <input type="checkbox" v-model="newAccepting" class="w-4 h-4 rounded" />
           <span class="text-sm font-medium text-zinc-700">Open for evaluations</span>
         </label>
+        <p v-if="createError" class="text-sm text-red-600 mb-2">{{ createError }}</p>
         <div class="flex gap-2 mt-6 justify-end">
           <AppButton @click="showCreate = false" variant="ghost">Cancel</AppButton>
           <AppButton @click="createSessionHandler">Create Lab Session</AppButton>
@@ -158,12 +175,15 @@ import {
   setLabSessionAccepting,
   getSubjects,
 } from '../../api/admin'
+import { apiErrorMessage } from '../../utils/errors'
 import type { LabSession, SubjectResponse } from '../../types/api'
 
 const sessions = ref<LabSession[]>([])
 const subjects = ref<SubjectResponse[]>([])
 const filterSubjectId = ref<number | string>('')
 const showCreate = ref(false)
+const createError = ref('')
+const actionError = ref('')
 const newSubjectId = ref<number | null>(null)
 const newDate = ref('')
 const newAccepting = ref(false)
@@ -185,13 +205,24 @@ async function load() {
 }
 onMounted(load)
 
+function openCreate() {
+  createError.value = ''
+  showCreate.value = true
+}
+
 async function createSessionHandler() {
   if (!newSubjectId.value || !newDate.value) return
-  await createLabSession({
-    subject_id: newSubjectId.value,
-    date: newDate.value,
-    accepting_evaluations: newAccepting.value,
-  })
+  createError.value = ''
+  try {
+    await createLabSession({
+      subject_id: newSubjectId.value,
+      date: newDate.value,
+      accepting_evaluations: newAccepting.value,
+    })
+  } catch (e) {
+    createError.value = apiErrorMessage(e)
+    return
+  }
   newSubjectId.value = null
   newDate.value = ''
   newAccepting.value = false
@@ -207,7 +238,16 @@ function startEdit(session: LabSession) {
 
 async function saveEdit(id: number) {
   if (!editDate.value) return
-  await updateLabSession(id, { date: editDate.value, accepting_evaluations: editAccepting.value })
+  actionError.value = ''
+  try {
+    await updateLabSession(id, {
+      date: editDate.value,
+      accepting_evaluations: editAccepting.value,
+    })
+  } catch (e) {
+    actionError.value = apiErrorMessage(e)
+    return
+  }
   editId.value = null
   editDate.value = ''
   editAccepting.value = false
@@ -221,7 +261,13 @@ function cancelEdit() {
 }
 
 async function toggleAccepting(session: LabSession) {
-  await setLabSessionAccepting(session.id, !session.accepting_evaluations)
+  actionError.value = ''
+  try {
+    await setLabSessionAccepting(session.id, !session.accepting_evaluations)
+  } catch (e) {
+    actionError.value = apiErrorMessage(e)
+    return
+  }
   await load()
 }
 
@@ -231,7 +277,13 @@ async function deleteSessionHandler(id: number) {
   ) {
     return
   }
-  await deleteLabSession(id)
+  actionError.value = ''
+  try {
+    await deleteLabSession(id)
+  } catch (e) {
+    actionError.value = apiErrorMessage(e)
+    return
+  }
   await load()
 }
 </script>
