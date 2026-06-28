@@ -43,7 +43,7 @@
     >
       <template #head>
         <th>ID</th>
-        <th>Student</th>
+        <th>Student Email</th>
         <th>Subject</th>
         <th>Question</th>
         <th>TA</th>
@@ -54,7 +54,7 @@
       </template>
       <tr v-for="evaluation in filteredEvaluations" :key="evaluation.id">
         <td>{{ evaluation.id }}</td>
-        <td>{{ getUserName(evaluation.student_id) }}</td>
+        <td>{{ getUserEmail(evaluation.student_id) }}</td>
         <td>{{ getQuestionSubject(evaluation.question_id) }}</td>
         <td>{{ getQuestionText(evaluation.question_id) }}</td>
         <td>{{ getUserName(evaluation.ta_id) }}</td>
@@ -245,6 +245,10 @@ onMounted(load)
 
 function getUserName(id: number) {
   return users.value.find((u) => u.id === id)?.name || ''
+}
+
+function getUserEmail(id: number) {
+  return users.value.find((u) => u.id === id)?.email || ''
 }
 function getQuestionText(id: number) {
   return questions.value.find((q) => q.id === id)?.text || ''

@@ -91,14 +91,14 @@
         </div>
         <AppTable :isEmpty="evaluations.length === 0" emptyMessage="No evaluations yet.">
           <template #head>
-            <th>Student</th>
+            <th>Student Email</th>
             <th>Question</th>
             <th>Marking</th>
             <th>Remarks</th>
             <th>Actions</th>
           </template>
           <tr v-for="ev in evaluations" :key="ev.id">
-            <td>{{ studentName(ev.student_id) }}</td>
+            <td>{{ studentEmail(ev.student_id) }}</td>
             <td class="max-w-xs truncate">{{ questionText(ev.question_id) }}</td>
             <td>
               <AppBadge variant="info">{{ ev.marking }}/5</AppBadge>
@@ -244,8 +244,8 @@ const canSubmit = computed(
     form.value.marking !== null,
 )
 
-function studentName(id: number): string {
-  return students.value.find((s) => s.id === id)?.name ?? String(id)
+function studentEmail(id: number): string {
+  return students.value.find((s) => s.id === id)?.email ?? String(id)
 }
 
 function questionText(id: number): string {
