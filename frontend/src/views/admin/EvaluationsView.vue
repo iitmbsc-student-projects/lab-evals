@@ -9,9 +9,15 @@
         <h2 class="text-2xl font-bold text-zinc-900">Evaluations</h2>
         <p class="text-sm text-zinc-600 mt-1">Manage all evaluations (admin override)</p>
       </div>
-      <AppButton class="self-start sm:self-auto shrink-0" @click="openCreate"
-        >Add Evaluation</AppButton
-      >
+      <div class="flex gap-2 self-start sm:self-auto shrink-0">
+        <AppButton
+          variant="secondary"
+          :disabled="evaluations.length === 0"
+          @click="downloadCsv"
+          >Download CSV</AppButton
+        >
+        <AppButton @click="openCreate">Add Evaluation</AppButton>
+      </div>
     </div>
     <!-- Subject Filter -->
     <div class="mb-4">
@@ -181,6 +187,7 @@
 <script setup lang="ts">
 // Admin Evaluations CRUD view
 import { ref, onMounted, computed, watch } from 'vue'
+import Papa from 'papaparse'
 import AppButton from '../../components/common/AppButton.vue'
 import AppInput from '../../components/common/AppInput.vue'
 import AppSelect from '../../components/common/AppSelect.vue'
@@ -268,6 +275,36 @@ function getSessionLabel(sessionId: number) {
   const session = labSessions.value.find((s) => s.id === sessionId)
   if (!session) return `Session #${sessionId}`
   return `${getSubjectName(session.subject_id)} — ${session.date}`
+}
+
+function getSessionDate(sessionId: number) {
+  return labSessions.value.find((s) => s.id === sessionId)?.date || ''
+}
+
+// Export the FULL evaluation list (not the subject-filtered view) as a CSV,
+// resolving foreign keys to human-readable values via the existing lookups.
+function downloadCsv() {
+  if (evaluations.value.length === 0) return
+  const rows = evaluations.value.map((e) => ({
+    'Evaluation ID': e.id,
+    'Student Email': getUserEmail(e.student_id),
+    'Student Name': getUserName(e.student_id),
+    Subject: getQuestionSubject(e.question_id),
+    Question: getQuestionText(e.question_id),
+    'TA Email': getUserEmail(e.ta_id),
+    'TA Name': getUserName(e.ta_id),
+    'Session Date': getSessionDate(e.lab_session_id),
+    Marking: e.marking,
+    Remarks: e.remarks ?? '',
+  }))
+  const csv = Papa.unparse(rows)
+  const filename = `evaluations-${new Date().toISOString().slice(0, 10)}.csv`
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }))
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  anchor.click()
+  URL.revokeObjectURL(url)
 }
 
 const filteredEvaluations = computed(() => {
