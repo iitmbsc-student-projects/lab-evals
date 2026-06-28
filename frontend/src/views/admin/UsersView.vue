@@ -169,9 +169,18 @@
           </ul>
         </div>
 
+        <!-- Skipped rows notice (shown in preview stage) -->
+        <div
+          v-if="skippedCount > 0 && uploadResults.success.length === 0 && uploadResults.errors.length === 0"
+          class="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800"
+        >
+          <span class="font-semibold">{{ skippedCount }} row{{ skippedCount === 1 ? '' : 's' }} skipped</span>
+          — {{ skippedCount === 1 ? 'that email already exists' : 'those emails already exist' }} in the system and will not be re-added.
+        </div>
+
         <!-- Preview Table -->
         <div v-if="csvData.length > 0 && validationErrors.length === 0" class="mb-4">
-          <p class="font-semibold mb-2">Preview ({{ csvData.length }} users):</p>
+          <p class="font-semibold mb-2">Preview ({{ csvData.length }} user{{ csvData.length === 1 ? '' : 's' }} to add<span v-if="skippedCount > 0">, {{ skippedCount }} skipped</span>):</p>
           <div class="border rounded max-h-60 overflow-auto">
             <table class="w-full text-sm">
               <thead class="bg-gray-50 sticky top-0">
@@ -206,7 +215,7 @@
 
         <!-- Upload Results -->
         <div
-          v-if="uploadResults.success.length > 0 || uploadResults.errors.length > 0"
+          v-if="uploadResults.success.length > 0 || uploadResults.skipped > 0 || uploadResults.errors.length > 0"
           class="mb-4"
         >
           <div
@@ -214,7 +223,15 @@
             class="mb-2 p-3 bg-green-50 border border-green-200 rounded"
           >
             <p class="text-green-800 font-semibold">
-              Successfully uploaded {{ uploadResults.success.length }} users
+              Successfully added {{ uploadResults.success.length }} user{{ uploadResults.success.length === 1 ? '' : 's' }}
+            </p>
+          </div>
+          <div
+            v-if="uploadResults.skipped > 0"
+            class="mb-2 p-3 bg-yellow-50 border border-yellow-200 rounded"
+          >
+            <p class="text-yellow-800 font-semibold">
+              {{ uploadResults.skipped }} row{{ uploadResults.skipped === 1 ? '' : 's' }} skipped (already exist{{ uploadResults.skipped === 1 ? 's' : '' }} in the system)
             </p>
           </div>
           <div
@@ -243,7 +260,7 @@
             @click="startUpload"
             :disabled="isUploading"
           >
-            Upload {{ csvData.length }} Users
+            Upload {{ csvData.length }} User{{ csvData.length === 1 ? '' : 's' }}<span v-if="skippedCount > 0"> ({{ skippedCount }} skipped)</span>
           </AppButton>
         </div>
       </div>
@@ -277,9 +294,14 @@ const showBulkUpload = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
 const csvData = ref<UserCreate[]>([])
 const validationErrors = ref<string[]>([])
+const skippedCount = ref(0)
 const isUploading = ref(false)
 const uploadProgress = ref({ current: 0, total: 0 })
-const uploadResults = ref<{ success: string[]; errors: string[] }>({ success: [], errors: [] })
+const uploadResults = ref<{ success: string[]; skipped: number; errors: string[] }>({
+  success: [],
+  skipped: 0,
+  errors: [],
+})
 
 async function load() {
   users.value = await getUsers()
@@ -340,7 +362,8 @@ function handleFileSelect(event: Event) {
   // Reset state
   csvData.value = []
   validationErrors.value = []
-  uploadResults.value = { success: [], errors: [] }
+  skippedCount.value = 0
+  uploadResults.value = { success: [], skipped: 0, errors: [] }
 
   Papa.parse(file, {
     header: true,
@@ -359,6 +382,7 @@ function validateAndLoadCSV(data: Record<string, string>[]) {
   const validData: UserCreate[] = []
   const csvEmails = new Set<string>()
   const existingEmails = new Set(users.value.map((u) => u.email.toLowerCase()))
+  let skipped = 0
 
   if (data.length === 0) {
     errors.push('CSV file is empty')
@@ -394,9 +418,9 @@ function validateAndLoadCSV(data: Record<string, string>[]) {
       return
     }
 
-    // Check if email already exists in database
+    // Skip rows whose email already exists in the system (not a blocking error)
     if (existingEmails.has(email)) {
-      errors.push(`Row ${rowNum}: email '${row.email.trim()}' already exists in the system`)
+      skipped++
       return
     }
 
@@ -414,6 +438,8 @@ function validateAndLoadCSV(data: Record<string, string>[]) {
     })
   })
 
+  skippedCount.value = skipped
+
   if (errors.length > 0) {
     validationErrors.value = errors
   } else {
@@ -426,7 +452,7 @@ async function startUpload() {
 
   isUploading.value = true
   uploadProgress.value = { current: 0, total: csvData.value.length }
-  uploadResults.value = { success: [], errors: [] }
+  uploadResults.value = { success: [], skipped: skippedCount.value, errors: [] }
 
   for (const element of csvData.value) {
     const user = element
@@ -466,7 +492,8 @@ function closeBulkUpload() {
   showBulkUpload.value = false
   csvData.value = []
   validationErrors.value = []
-  uploadResults.value = { success: [], errors: [] }
+  skippedCount.value = 0
+  uploadResults.value = { success: [], skipped: 0, errors: [] }
   uploadProgress.value = { current: 0, total: 0 }
   isUploading.value = false
 
