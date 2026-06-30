@@ -1,6 +1,9 @@
 # Cloud Build pipeline for the lab-evals backend.
 #
-# Manual trigger:  gcloud builds submit --config=backend/cloudbuild.yaml backend/
+# Build root is the REPO ROOT (the GitHub trigger checks out the whole repo),
+# so the docker step uses `-f backend/Dockerfile backend` (Dockerfile path +
+# build context), NOT `.`.
+# Manual deploy (from repo root):  gcloud builds submit --config=backend/cloudbuild.yaml .
 # Automatic:       wire a Cloud Build GitHub trigger to this file on push to master.
 #
 # Substitutions (override with --substitutions=_KEY=value):
@@ -42,7 +45,9 @@ steps:
       - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/backend:${BUILD_ID}
       - -t
       - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/backend:latest
-      - .
+      - -f
+      - backend/Dockerfile
+      - backend
 
   - id: push
     name: gcr.io/cloud-builders/docker

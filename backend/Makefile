@@ -23,4 +23,4 @@ check: format lint
 
 # Build and deploy to Cloud Run via Cloud Build. See deploy/SETUP.md.
 deploy:
-	gcloud builds submit --config=cloudbuild.yaml .
+	cd .. && gcloud builds submit --config=backend/cloudbuild.yaml .
