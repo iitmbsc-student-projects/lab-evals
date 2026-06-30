@@ -18,4 +18,4 @@ build:
 
 # Build and deploy to Firebase Hosting via Cloud Build. See deploy/SETUP.md.
 deploy:
-	gcloud builds submit --config=cloudbuild.yaml .
+	cd .. && gcloud builds submit --config=frontend/cloudbuild.yaml .

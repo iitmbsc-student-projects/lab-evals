@@ -1,6 +1,8 @@
 # Cloud Build pipeline for the lab-evals frontend (Vue 3 + Vite).
 #
-# Manual trigger:  gcloud builds submit --config=frontend/cloudbuild.yaml frontend/
+# Build root is the REPO ROOT (the GitHub trigger checks out the whole repo),
+# so every step sets `dir: frontend` to run inside the frontend/ subdir.
+# Manual deploy (from repo root):  gcloud builds submit --config=frontend/cloudbuild.yaml .
 # Automatic:       wire a Cloud Build GitHub trigger to this file on push to master.
 #
 # VITE_API_BASE and VITE_GOOGLE_CLIENT_ID are pulled from Secret Manager at build
@@ -19,11 +21,13 @@ options:
 steps:
   - id: install
     name: oven/bun:1
+    dir: frontend
     entrypoint: bun
     args: [install, --frozen-lockfile]
 
   - id: build
     name: oven/bun:1
+    dir: frontend
     entrypoint: bash
     secretEnv: [VITE_API_BASE, VITE_GOOGLE_CLIENT_ID]
     args:
@@ -39,6 +43,7 @@ steps:
 
   - id: deploy
     name: node:20-slim
+    dir: frontend
     entrypoint: bash
     args:
       - -c
