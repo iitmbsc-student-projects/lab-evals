@@ -9,9 +9,15 @@
         <h2 class="text-2xl font-bold text-zinc-900">Evaluations</h2>
         <p class="text-sm text-zinc-600 mt-1">Manage all evaluations (admin override)</p>
       </div>
-      <AppButton class="self-start sm:self-auto shrink-0" @click="showCreate = true"
-        >Add Evaluation</AppButton
-      >
+      <div class="flex gap-2 self-start sm:self-auto shrink-0">
+        <AppButton
+          variant="secondary"
+          :disabled="evaluations.length === 0"
+          @click="downloadCsv"
+          >Download CSV</AppButton
+        >
+        <AppButton @click="openCreate">Add Evaluation</AppButton>
+      </div>
     </div>
     <!-- Subject Filter -->
     <div class="mb-4">
@@ -22,26 +28,43 @@
         </option>
       </AppSelect>
     </div>
+    <div
+      v-if="actionError"
+      class="mb-4 p-3 bg-red-50 border border-red-200 rounded flex items-start justify-between gap-3"
+    >
+      <p class="text-sm text-red-700">{{ actionError }}</p>
+      <button
+        @click="actionError = ''"
+        class="text-red-400 hover:text-red-600 transition-colors shrink-0"
+        aria-label="Dismiss error"
+      >
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
     <AppTable
       :isEmpty="filteredEvaluations.length === 0"
       emptyMessage="No evaluations found. Add your first evaluation or adjust your filters."
     >
       <template #head>
         <th>ID</th>
-        <th>Student</th>
+        <th>Student Email</th>
         <th>Subject</th>
         <th>Question</th>
         <th>TA</th>
+        <th>Session</th>
         <th>Marking</th>
         <th>Remarks</th>
         <th>Actions</th>
       </template>
       <tr v-for="evaluation in filteredEvaluations" :key="evaluation.id">
         <td>{{ evaluation.id }}</td>
-        <td>{{ getUserName(evaluation.student_id) }}</td>
+        <td>{{ getUserEmail(evaluation.student_id) }}</td>
         <td>{{ getQuestionSubject(evaluation.question_id) }}</td>
         <td>{{ getQuestionText(evaluation.question_id) }}</td>
         <td>{{ getUserName(evaluation.ta_id) }}</td>
+        <td>{{ getSessionLabel(evaluation.lab_session_id) }}</td>
         <td v-if="editId !== evaluation.id">{{ evaluation.marking }} / 5</td>
         <td v-else>
           <AppSelect v-model.number="editMarking">
@@ -102,56 +125,56 @@
             </svg>
           </button>
         </div>
+        <AppSelect
+          v-model="newLabSessionId"
+          label="Lab Session"
+          required
+          class="mb-3"
+        >
+          <option :value="null">-- Select Lab Session --</option>
+          <option v-for="session in labSessions" :key="session.id" :value="session.id">
+            {{ getSessionLabel(session.id) }}
+          </option>
+        </AppSelect>
         <AppCombobox
           v-model="newStudentId"
-          :options="studentOptions"
-          @change="onStudentChange"
+          :options="sessionStudentOptions"
+          :disabled="!newLabSessionId || sessionRosterLoading"
           label="Student"
           placeholder="Search student by name or email..."
           required
           class="mb-3"
         />
-        <AppSelect
-          v-model="newSubjectId"
-          :disabled="!newStudentId"
-          @change="onSubjectChange"
-          label="Subject"
+        <AppCombobox
+          v-model="newTaId"
+          :options="sessionTaOptions"
+          :disabled="!newLabSessionId || sessionRosterLoading"
+          label="TA"
+          placeholder="Search TA by name or email..."
           required
           class="mb-3"
-        >
-          <option :value="null">-- Select Subject --</option>
-          <option
-            v-for="subject in filteredSubjectsForStudent"
-            :key="subject.id"
-            :value="subject.id"
-          >
-            {{ subject.name }}
-          </option>
-        </AppSelect>
+        />
         <AppSelect
           v-model="newQuestionId"
-          :disabled="!newSubjectId"
+          :disabled="!newLabSessionId"
           label="Question"
           required
           class="mb-3"
         >
+          <option :value="null">-- Select Question --</option>
           <option
-            v-for="question in filteredQuestionsForSubject"
+            v-for="question in sessionQuestionOptions"
             :key="question.id"
             :value="question.id"
           >
             {{ question.text }}
           </option>
         </AppSelect>
-        <AppSelect v-model="newTaId" label="TA" required class="mb-3">
-          <option v-for="user in tas" :key="user.id" :value="user.id">
-            {{ user.name }} ({{ user.email }})
-          </option>
-        </AppSelect>
         <AppSelect v-model.number="newMarking" label="Marking" required class="mb-3">
           <option v-for="n in 5" :key="n" :value="n">{{ n }} / 5</option>
         </AppSelect>
         <AppInput v-model="newRemarks" placeholder="Remarks (optional)" label="Remarks" />
+        <p v-if="createError" class="text-sm text-red-600 mt-3">{{ createError }}</p>
         <div class="flex gap-2 mt-6 justify-end">
           <AppButton @click="showCreate = false" variant="ghost">Cancel</AppButton>
           <AppButton @click="createEvaluationHandler">Create Evaluation</AppButton>
@@ -163,7 +186,8 @@
 
 <script setup lang="ts">
 // Admin Evaluations CRUD view
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
+import Papa from 'papaparse'
 import AppButton from '../../components/common/AppButton.vue'
 import AppInput from '../../components/common/AppInput.vue'
 import AppSelect from '../../components/common/AppSelect.vue'
@@ -177,7 +201,8 @@ import {
   getUsers,
   getQuestions,
   getSubjects,
-  getEnrollments,
+  getLabSessions,
+  getSessionAssignments,
 } from '../../api/admin'
 import type {
   EvaluationResponse,
@@ -185,17 +210,21 @@ import type {
   QuestionResponse,
   Marking,
   SubjectResponse,
-  EnrollmentResponse,
+  LabSession,
+  SessionAssignment,
 } from '../../types/api'
+import { apiErrorMessage } from '../../utils/errors'
 
 const evaluations = ref<EvaluationResponse[]>([])
 const users = ref<UserResponse[]>([])
 const questions = ref<QuestionResponse[]>([])
 const subjects = ref<SubjectResponse[]>([])
-const enrollments = ref<EnrollmentResponse[]>([])
+const labSessions = ref<LabSession[]>([])
 const showCreate = ref(false)
+const createError = ref('')
+const actionError = ref('')
+const newLabSessionId = ref<number | null>(null)
 const newStudentId = ref<number | null>(null)
-const newSubjectId = ref<number | null>(null)
 const newQuestionId = ref<number | null>(null)
 const newTaId = ref<number | null>(null)
 const newMarking = ref<Marking>(5)
@@ -205,20 +234,28 @@ const editMarking = ref<Marking>(5)
 const editRemarks = ref('')
 const filterSubjectId = ref<number | string>('')
 
+// Session roster state for the create modal
+const sessionRoster = ref<SessionAssignment[]>([])
+const sessionRosterLoading = ref(false)
+
 async function load() {
-  ;[evaluations.value, users.value, questions.value, subjects.value, enrollments.value] =
+  ;[evaluations.value, users.value, questions.value, subjects.value, labSessions.value] =
     await Promise.all([
       getEvaluations(),
       getUsers(),
       getQuestions(),
       getSubjects(),
-      getEnrollments(),
+      getLabSessions(),
     ])
 }
 onMounted(load)
 
 function getUserName(id: number) {
   return users.value.find((u) => u.id === id)?.name || ''
+}
+
+function getUserEmail(id: number) {
+  return users.value.find((u) => u.id === id)?.email || ''
 }
 function getQuestionText(id: number) {
   return questions.value.find((q) => q.id === id)?.text || ''
@@ -228,6 +265,46 @@ function getQuestionSubject(questionId: number) {
   const question = questions.value.find((q) => q.id === questionId)
   if (!question) return ''
   return subjects.value.find((s) => s.id === question.subject_id)?.name || ''
+}
+
+function getSubjectName(id: number) {
+  return subjects.value.find((s) => s.id === id)?.name || ''
+}
+
+function getSessionLabel(sessionId: number) {
+  const session = labSessions.value.find((s) => s.id === sessionId)
+  if (!session) return `Session #${sessionId}`
+  return `${getSubjectName(session.subject_id)} — ${session.date}`
+}
+
+function getSessionDate(sessionId: number) {
+  return labSessions.value.find((s) => s.id === sessionId)?.date || ''
+}
+
+// Export the FULL evaluation list (not the subject-filtered view) as a CSV,
+// resolving foreign keys to human-readable values via the existing lookups.
+function downloadCsv() {
+  if (evaluations.value.length === 0) return
+  const rows = evaluations.value.map((e) => ({
+    'Evaluation ID': e.id,
+    'Student Email': getUserEmail(e.student_id),
+    'Student Name': getUserName(e.student_id),
+    Subject: getQuestionSubject(e.question_id),
+    Question: getQuestionText(e.question_id),
+    'TA Email': getUserEmail(e.ta_id),
+    'TA Name': getUserName(e.ta_id),
+    'Session Date': getSessionDate(e.lab_session_id),
+    Marking: e.marking,
+    Remarks: e.remarks ?? '',
+  }))
+  const csv = Papa.unparse(rows)
+  const filename = `evaluations-${new Date().toISOString().slice(0, 10)}.csv`
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }))
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  anchor.click()
+  URL.revokeObjectURL(url)
 }
 
 const filteredEvaluations = computed(() => {
@@ -240,60 +317,88 @@ const filteredEvaluations = computed(() => {
   })
 })
 
-const students = computed(() => {
-  return users.value.filter((u) => u.role === 'student')
-})
-
-// Options for the searchable student combobox
-const studentOptions = computed(() =>
-  students.value.map((u) => ({ value: u.id, label: `${u.name} (${u.email})` })),
+// Roster-driven options for the create modal
+const sessionStudentOptions = computed(() =>
+  sessionRoster.value
+    .filter((a) => a.role === 'student')
+    .map((a) => {
+      const u = users.value.find((user) => user.id === a.user_id)
+      return { value: a.user_id, label: u ? `${u.name} (${u.email})` : String(a.user_id) }
+    }),
 )
 
-const tas = computed(() => {
-  return users.value.filter((u) => u.role === 'ta')
+const sessionTaOptions = computed(() =>
+  sessionRoster.value
+    .filter((a) => a.role === 'ta')
+    .map((a) => {
+      const u = users.value.find((user) => user.id === a.user_id)
+      return { value: a.user_id, label: u ? `${u.name} (${u.email})` : String(a.user_id) }
+    }),
+)
+
+const sessionQuestionOptions = computed(() => {
+  if (!newLabSessionId.value) return []
+  const session = labSessions.value.find((s) => s.id === newLabSessionId.value)
+  if (!session) return []
+  return questions.value.filter((q) => q.subject_id === session.subject_id)
 })
 
-const filteredSubjectsForStudent = computed(() => {
-  if (!newStudentId.value) return []
-
-  const studentSubjectIds = enrollments.value
-    .filter((e) => e.user_id === newStudentId.value)
-    .map((e) => e.subject_id)
-
-  return subjects.value.filter((s) => studentSubjectIds.includes(s.id))
+// Reset dependent pickers + reload the roster whenever the session changes
+// (watch, not @change, so programmatic changes are handled too).
+watch(newLabSessionId, () => {
+  onSessionChange()
 })
 
-const filteredQuestionsForSubject = computed(() => {
-  if (!newSubjectId.value) return []
-  return questions.value.filter((q) => q.subject_id === newSubjectId.value)
-})
-
-function onStudentChange() {
-  // Reset subject and question when student changes
-  newSubjectId.value = null
+async function onSessionChange() {
+  // Reset dependent pickers when session changes
+  newStudentId.value = null
+  newTaId.value = null
   newQuestionId.value = null
+  sessionRoster.value = []
+  if (!newLabSessionId.value) return
+  sessionRosterLoading.value = true
+  try {
+    sessionRoster.value = await getSessionAssignments(newLabSessionId.value)
+  } finally {
+    sessionRosterLoading.value = false
+  }
 }
 
-function onSubjectChange() {
-  // Reset question when subject changes
-  newQuestionId.value = null
+function openCreate() {
+  createError.value = ''
+  showCreate.value = true
 }
 
 async function createEvaluationHandler() {
-  if (!newStudentId.value || !newQuestionId.value || !newTaId.value || !newMarking.value) return
-  await createEvaluation({
-    student_id: newStudentId.value,
-    question_id: newQuestionId.value,
-    ta_id: newTaId.value,
-    marking: newMarking.value,
-    remarks: newRemarks.value || null,
-  })
+  if (
+    !newLabSessionId.value ||
+    !newStudentId.value ||
+    !newQuestionId.value ||
+    !newTaId.value ||
+    !newMarking.value
+  )
+    return
+  createError.value = ''
+  try {
+    await createEvaluation({
+      lab_session_id: newLabSessionId.value,
+      student_id: newStudentId.value,
+      question_id: newQuestionId.value,
+      ta_id: newTaId.value,
+      marking: newMarking.value,
+      remarks: newRemarks.value || null,
+    })
+  } catch (e) {
+    createError.value = apiErrorMessage(e)
+    return
+  }
+  newLabSessionId.value = null
   newStudentId.value = null
-  newSubjectId.value = null
   newQuestionId.value = null
   newTaId.value = null
   newMarking.value = 5
   newRemarks.value = ''
+  sessionRoster.value = []
   showCreate.value = false
   await load()
 }
@@ -307,13 +412,20 @@ function startEdit(evaluation: EvaluationResponse) {
 async function saveEdit(id: number) {
   const ev = evaluations.value.find((e) => e.id === id)
   if (!ev) return
-  await updateEvaluation(id, {
-    student_id: ev.student_id,
-    question_id: ev.question_id,
-    ta_id: ev.ta_id,
-    marking: editMarking.value,
-    remarks: editRemarks.value || null,
-  })
+  actionError.value = ''
+  try {
+    await updateEvaluation(id, {
+      lab_session_id: ev.lab_session_id,
+      student_id: ev.student_id,
+      question_id: ev.question_id,
+      ta_id: ev.ta_id,
+      marking: editMarking.value,
+      remarks: editRemarks.value || null,
+    })
+  } catch (e) {
+    actionError.value = apiErrorMessage(e)
+    return
+  }
   editId.value = null
   editMarking.value = 5
   editRemarks.value = ''
@@ -330,7 +442,13 @@ async function deleteEvaluationHandler(id: number) {
   if (!confirm('Are you sure you want to delete this evaluation? This action cannot be undone.')) {
     return
   }
-  await deleteEvaluation(id)
+  actionError.value = ''
+  try {
+    await deleteEvaluation(id)
+  } catch (e) {
+    actionError.value = apiErrorMessage(e)
+    return
+  }
   await load()
 }
 </script>

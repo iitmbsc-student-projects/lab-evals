@@ -53,12 +53,20 @@
           Users
         </RouterLink>
         <RouterLink
-          to="/admin/enrollments"
+          to="/admin/lab-sessions"
           class="px-4 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap shrink-0"
           active-class="bg-zinc-800 text-white"
-          :class="$route.path === '/admin/enrollments' ? '' : 'text-zinc-700 hover:bg-zinc-100'"
+          :class="$route.path === '/admin/lab-sessions' ? '' : 'text-zinc-700 hover:bg-zinc-100'"
         >
-          Enrollments
+          Lab Sessions
+        </RouterLink>
+        <RouterLink
+          to="/admin/session-assignments"
+          class="px-4 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap shrink-0"
+          active-class="bg-zinc-800 text-white"
+          :class="$route.path === '/admin/session-assignments' ? '' : 'text-zinc-700 hover:bg-zinc-100'"
+        >
+          Session Assignments
         </RouterLink>
         <RouterLink
           to="/admin/evaluations"

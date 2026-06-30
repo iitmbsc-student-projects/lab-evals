@@ -1,11 +1,10 @@
 """
-Role enum for RBAC.
+Role enum for per-subject RBAC.
 """
 
 from enum import Enum
 
 
-class UserRole(str, Enum):
+class SubjectRole(str, Enum):
     student = "student"
     ta = "ta"
-    admin = "admin"

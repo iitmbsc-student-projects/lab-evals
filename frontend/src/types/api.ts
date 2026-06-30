@@ -1,26 +1,27 @@
 // Types for API requests and responses, generated from OpenAPI spec
 // Used throughout the app for type safety
 
-export type UserRole = 'admin' | 'ta' | 'student'
+export type SubjectRole = 'student' | 'ta'
 
 export interface UserResponse {
   id: number
   name: string
   email: string
-  role: UserRole
+  is_admin: boolean
   created_at: string
 }
 
 export interface UserCreate {
   name: string
   email: string
-  role: UserRole
+  is_admin?: boolean
+  google_sub?: string
 }
 
 export interface UserUpdate {
   name: string
   email: string
-  role: UserRole
+  is_admin?: boolean
 }
 
 export interface SubjectResponse {
@@ -55,15 +56,44 @@ export interface QuestionUpdate {
   text: string
 }
 
-export interface EnrollmentResponse {
+export interface LabSession {
   id: number
-  user_id: number
   subject_id: number
+  date: string
+  accepting_evaluations: boolean
 }
 
-export interface EnrollmentCreate {
-  user_id: number
+export interface LabSessionCreate {
   subject_id: number
+  date: string
+  accepting_evaluations?: boolean
+}
+
+export interface LabSessionUpdate {
+  date: string
+  accepting_evaluations: boolean
+}
+
+export interface SessionAssignment {
+  id: number
+  lab_session_id: number
+  user_id: number
+  role: SubjectRole
+}
+
+export interface SessionAssignmentCreate {
+  lab_session_id: number
+  user_id: number
+  role: SubjectRole
+}
+
+export interface MySession {
+  lab_session_id: number
+  subject_id: number
+  subject_name: string
+  date: string
+  role: SubjectRole
+  accepting_evaluations: boolean
 }
 
 // Evaluation rating: integer 1-5 (5 = best).
@@ -71,6 +101,7 @@ export type Marking = 1 | 2 | 3 | 4 | 5
 
 export interface EvaluationResponse {
   id: number
+  lab_session_id: number
   student_id: number
   question_id: number
   ta_id: number
@@ -84,9 +115,11 @@ export interface EvaluationUpdate {
   ta_id: number
   marking: Marking
   remarks?: string | null
+  lab_session_id: number
 }
 
 export interface TAEvaluationCreate {
+  lab_session_id: number
   student_id: number
   question_id: number
   marking: Marking
@@ -95,6 +128,7 @@ export interface TAEvaluationCreate {
 
 export interface TAEvaluationResponse {
   id: number
+  lab_session_id: number
   student_id: number
   question_id: number
   marking: Marking
@@ -103,10 +137,16 @@ export interface TAEvaluationResponse {
 }
 
 export interface TAEvaluationUpdate {
-  student_id: number
-  question_id: number
   marking: Marking
   remarks?: string | null
+}
+
+export interface StudentEvaluationResponse {
+  id: number
+  lab_session_id: number
+  student_id: number
+  question_id: number
+  ta_id: number
 }
 
 export interface TokenRequest {

@@ -1,4 +1,4 @@
-// Admin API: CRUD for subjects, questions, users, enrollments, evaluations
+// Admin API: CRUD for subjects, questions, users, lab sessions, session assignments, evaluations
 import api from './client'
 import type {
   SubjectResponse,
@@ -10,8 +10,11 @@ import type {
   UserResponse,
   UserCreate,
   UserUpdate,
-  EnrollmentResponse,
-  EnrollmentCreate,
+  LabSession,
+  LabSessionCreate,
+  LabSessionUpdate,
+  SessionAssignment,
+  SessionAssignmentCreate,
   EvaluationResponse,
   EvaluationUpdate,
 } from '../types/api'
@@ -42,13 +45,42 @@ export const updateUser = async (id: number, body: UserUpdate) =>
   (await api.put(`/admin/users/${id}`, body)).data
 export const deleteUser = async (id: number) => (await api.delete(`/admin/users/${id}`)).data
 
-// Enrollments
-export const getEnrollments = async (): Promise<EnrollmentResponse[]> =>
-  (await api.get('/admin/enrollments')).data
-export const createEnrollment = async (body: EnrollmentCreate) =>
-  (await api.post('/admin/enrollments', body)).data
-export const deleteEnrollment = async (id: number) =>
-  (await api.delete(`/admin/enrollments/${id}`)).data
+// Lab Sessions
+export const getLabSessions = async (subjectId?: number): Promise<LabSession[]> =>
+  (await api.get('/admin/lab-sessions', { params: subjectId ? { subject_id: subjectId } : {} }))
+    .data
+export const getLabSession = async (id: number): Promise<LabSession> =>
+  (await api.get(`/admin/lab-sessions/${id}`)).data
+export const createLabSession = async (body: LabSessionCreate): Promise<LabSession> =>
+  (await api.post('/admin/lab-sessions', body)).data
+export const updateLabSession = async (id: number, body: LabSessionUpdate): Promise<LabSession> =>
+  (await api.put(`/admin/lab-sessions/${id}`, body)).data
+export const deleteLabSession = async (id: number) =>
+  (await api.delete(`/admin/lab-sessions/${id}`)).data
+export const setLabSessionAccepting = async (
+  id: number,
+  accepting: boolean,
+): Promise<LabSession> =>
+  (
+    await api.patch(`/admin/lab-sessions/${id}/accepting`, null, {
+      params: { accepting_evaluations: accepting },
+    })
+  ).data
+
+// Session Assignments
+export const getSessionAssignments = async (labSessionId?: number): Promise<SessionAssignment[]> =>
+  (
+    await api.get('/admin/session-assignments', {
+      params: labSessionId ? { lab_session_id: labSessionId } : {},
+    })
+  ).data
+export const getSessionAssignment = async (id: number): Promise<SessionAssignment> =>
+  (await api.get(`/admin/session-assignments/${id}`)).data
+export const createSessionAssignment = async (
+  body: SessionAssignmentCreate,
+): Promise<SessionAssignment> => (await api.post('/admin/session-assignments', body)).data
+export const deleteSessionAssignment = async (id: number) =>
+  (await api.delete(`/admin/session-assignments/${id}`)).data
 
 // Evaluations
 export const getEvaluations = async (): Promise<EvaluationResponse[]> =>

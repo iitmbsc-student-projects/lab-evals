@@ -65,4 +65,4 @@ def get_or_create_user_from_google(claims: dict) -> User:
 
 def issue_jwt_for_user(user: User) -> str:
     """Issue JWT for authenticated user."""
-    return create_access_token({"user_id": user.id, "role": user.role})
+    return create_access_token({"user_id": user.id})
