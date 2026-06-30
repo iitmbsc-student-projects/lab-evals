@@ -10,7 +10,7 @@ from app.core.database import Base
 
 
 class User(Base):
-    __tablename__ = "users"
+    __tablename__ = "users_v2"
     id: Mapped[int] = mapped_column(
         Integer, primary_key=True, autoincrement=True
     )

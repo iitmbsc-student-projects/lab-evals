@@ -17,16 +17,17 @@ from app.core.database import Base
 
 
 class Evaluation(Base):
-    __tablename__ = "evaluations"
+    __tablename__ = "evaluations_v2"
     __table_args__ = (
         CheckConstraint(
-            "marking >= 1 AND marking <= 5", name="ck_evaluations_marking_1_5"
+            "marking >= 1 AND marking <= 5",
+            name="ck_evaluations_v2_marking_1_5",
         ),
         UniqueConstraint(
             "lab_session_id",
             "student_id",
             "question_id",
-            name="uq_eval_session_student_question",
+            name="uq_eval_v2_session_student_question",
         ),
     )
 
@@ -37,13 +38,13 @@ class Evaluation(Base):
         Integer, ForeignKey("lab_sessions.id"), nullable=False
     )
     student_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("users.id"), nullable=False
+        Integer, ForeignKey("users_v2.id"), nullable=False
     )
     question_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("questions.id"), nullable=False
     )
     ta_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("users.id"), nullable=False
+        Integer, ForeignKey("users_v2.id"), nullable=False
     )
     marking: Mapped[int] = mapped_column(Integer, nullable=False)
     remarks: Mapped[str] = mapped_column(Text, nullable=True)

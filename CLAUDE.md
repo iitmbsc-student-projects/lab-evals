@@ -78,9 +78,7 @@ Handlers do `db = SessionLocal()` inside `try/.../finally: db.close()` — they 
 
 `Base.metadata.create_all()` runs in the `main.py` lifespan. New tables/columns appear on the next (cold) start. **Destructive changes (drops, type changes, renames) are NOT handled** — they need a manual `ALTER` against the DB. There is no Alembic. Keep model changes additive unless you also plan the manual migration.
 
-**One-time reset for the per-session RBAC migration:** The switch from global roles to per-session roles removed `enrollments`, added `is_admin` to `users`, restructured `evaluations`, and introduced `lab_sessions`/`session_assignments`. On **existing** databases you must do a one-time reset before starting the new server:
-- _Local (SQLite)_: `rm backend/dev.db` — cold start recreates everything.
-- _Cloud SQL (Postgres)_: `DROP TABLE enrollments, evaluations, users CASCADE;` then let the next cold start recreate them. `lab_sessions` and `session_assignments` are new and will be created automatically.
+**No migration needed for the versioned-table rename:** The tables `users`, `evaluations`, and `session_assignments` have been renamed to `users_v2`, `evaluations_v2`, and `session_assignments_v2`. Deploy the code and `create_all` builds the new `*_v2` tables on the next cold start; the old `users`, `evaluations`, `enrollments` (and any pre-existing `session_assignments`) tables simply linger unused and can be dropped later at leisure. Local dev: `rm backend/dev.db` then run.
 
 ### Layering
 
@@ -88,7 +86,7 @@ Handlers do `db = SessionLocal()` inside `try/.../finally: db.close()` — they 
 
 ### Data model
 
-`User` (`is_admin: bool`); `Subject` —< `Question`; `Subject` —< `LabSession(date, accepting_evaluations)` UNIQUE(subject, date) —< `SessionAssignment(role: student|ta)` UNIQUE(session, user) — this roster IS the membership; `Evaluation(lab_session, student, question, ta, marking 1–5, remarks)` UNIQUE(lab_session, student, question); `AuditLog` is append-only. There is no `Enrollment` table.
+`users_v2` (`User`, `is_admin: bool`); `subjects` (`Subject`) —< `questions` (`Question`); `subjects` —< `lab_sessions` (`LabSession(date, accepting_evaluations)`) UNIQUE(subject, date) —< `session_assignments_v2` (`SessionAssignment(role: student|ta)`) UNIQUE(session, user) — this roster IS the membership; `evaluations_v2` (`Evaluation(lab_session, student, question, ta, marking 1–5, remarks)`) UNIQUE(lab_session, student, question); `audit_log` (`AuditLog`) is append-only. There is no `Enrollment` table. Tables unchanged from initial deploy: `subjects`, `questions`, `lab_sessions`, `audit_log`.
 
 ## Conventions
 

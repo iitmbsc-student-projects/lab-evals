@@ -11,12 +11,12 @@ from app.core.database import Base
 
 
 class SessionAssignment(Base):
-    __tablename__ = "session_assignments"
+    __tablename__ = "session_assignments_v2"
     __table_args__ = (
         UniqueConstraint(
             "lab_session_id",
             "user_id",
-            name="uq_session_assignment_user",
+            name="uq_session_assignment_v2_user",
         ),
     )
 
@@ -27,7 +27,7 @@ class SessionAssignment(Base):
         Integer, ForeignKey("lab_sessions.id"), nullable=False
     )
     user_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("users.id"), nullable=False
+        Integer, ForeignKey("users_v2.id"), nullable=False
     )
     role: Mapped[SubjectRole] = mapped_column(
         Enum(SubjectRole), nullable=False
