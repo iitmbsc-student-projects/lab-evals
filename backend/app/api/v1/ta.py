@@ -19,6 +19,7 @@ from app.models.question import Question
 from app.models.session_assignment import SessionAssignment
 from app.models.user import User
 from app.schemas.evaluation import (
+    TAEvaluationCoverage,
     TAEvaluationCreate,
     TAEvaluationResponse,
     TAEvaluationUpdate,
@@ -121,6 +122,34 @@ def list_evaluations(
                 Evaluation.lab_session_id == lab_session_id,
                 Evaluation.ta_id == current_user.id,
             )
+            .all()
+        )
+    finally:
+        db.close()
+
+
+# --- Coverage: (student, question) pairs already taken on a session ---
+
+
+@router.get(
+    "/sessions/{lab_session_id}/coverage",
+    response_model=list[TAEvaluationCoverage],
+)
+def list_coverage(
+    lab_session_id: int,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Every evaluated (student, question) pair on the session, across all
+    TAs, so a TA is not offered a question another TA has already done.
+    Marks and remarks are not exposed.
+    """
+    db = SessionLocal()
+    try:
+        _require_ta(db, current_user.id, lab_session_id)
+        return (
+            db.query(Evaluation)
+            .filter(Evaluation.lab_session_id == lab_session_id)
             .all()
         )
     finally:

@@ -136,6 +136,12 @@ export interface TAEvaluationResponse {
   remarks?: string | null
 }
 
+export interface TAEvaluationCoverage {
+  student_id: number
+  question_id: number
+  ta_id: number
+}
+
 export interface TAEvaluationUpdate {
   marking: Marking
   remarks?: string | null
