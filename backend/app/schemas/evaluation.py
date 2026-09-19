@@ -72,3 +72,19 @@ class TAEvaluationResponse(TAEvaluationBase):
     class Config:
         from_attributes = True
         extra = "forbid"
+
+
+class TAEvaluationCoverage(BaseModel):
+    """
+    Which (student, question) pairs already have an evaluation on a
+    session, regardless of which TA recorded it. Deliberately carries no
+    marking/remarks: it only tells a TA what is already taken.
+    """
+
+    student_id: int
+    question_id: int
+    ta_id: int
+
+    class Config:
+        from_attributes = True
+        extra = "forbid"

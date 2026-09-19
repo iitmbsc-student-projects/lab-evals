@@ -4,6 +4,7 @@ import type {
   UserResponse,
   QuestionResponse,
   TAEvaluationCreate,
+  TAEvaluationCoverage,
   TAEvaluationResponse,
   TAEvaluationUpdate,
 } from '../types/api'
@@ -19,6 +20,10 @@ export const getQuestions = async (sessionId: number): Promise<QuestionResponse[
 // List evaluations for a session
 export const getEvaluations = async (sessionId: number): Promise<TAEvaluationResponse[]> =>
   (await api.get(`/ta/sessions/${sessionId}/evaluations`)).data
+
+// List every evaluated (student, question) pair on a session, across all TAs
+export const getCoverage = async (sessionId: number): Promise<TAEvaluationCoverage[]> =>
+  (await api.get(`/ta/sessions/${sessionId}/coverage`)).data
 
 // Create evaluation for a session
 export const createEvaluation = async (

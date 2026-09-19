@@ -54,6 +54,12 @@
               </option>
             </AppSelect>
           </div>
+          <p
+            v-if="form.student_id !== null && availableQuestions.length === 0"
+            class="text-sm text-zinc-500"
+          >
+            All questions for this student have already been evaluated.
+          </p>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <AppSelect
               v-model="form.marking"
@@ -160,11 +166,19 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
-import type { MySession, UserResponse, QuestionResponse, TAEvaluationResponse, Marking } from '../../types/api'
+import type {
+  MySession,
+  UserResponse,
+  QuestionResponse,
+  TAEvaluationResponse,
+  TAEvaluationCoverage,
+  Marking,
+} from '../../types/api'
 import {
   getStudents,
   getQuestions,
   getEvaluations,
+  getCoverage,
   createEvaluation,
   updateEvaluation,
   deleteEvaluation,
@@ -191,6 +205,9 @@ const deleteError = ref('')
 const students = ref<UserResponse[]>([])
 const questions = ref<QuestionResponse[]>([])
 const evaluations = ref<TAEvaluationResponse[]>([])
+// Every (student, question) pair already evaluated on this session by ANY
+// TA — drives the question list so two TAs can't be offered the same pair.
+const coverage = ref<TAEvaluationCoverage[]>([])
 
 // Create form
 const form = ref<{
@@ -228,11 +245,9 @@ const studentOptions = computed(() =>
 
 const availableQuestions = computed(() => {
   if (form.value.student_id === null) return questions.value
-  // Filter out questions already evaluated for this student
+  // Filter out questions already evaluated for this student by any TA
   const evaluatedQuestionIds = new Set(
-    evaluations.value
-      .filter((e) => e.student_id === form.value.student_id)
-      .map((e) => e.question_id),
+    coverage.value.filter((e) => e.student_id === form.value.student_id).map((e) => e.question_id),
   )
   return questions.value.filter((q) => !evaluatedQuestionIds.has(q.id))
 })
@@ -267,9 +282,17 @@ async function handleCreate() {
       remarks: form.value.remarks || null,
     })
     evaluations.value.push(created)
+    coverage.value.push({
+      student_id: created.student_id,
+      question_id: created.question_id,
+      ta_id: created.ta_id,
+    })
     form.value = { student_id: form.value.student_id, question_id: null, marking: null, remarks: '' }
   } catch (e: unknown) {
     createError.value = e instanceof Error ? e.message : 'Failed to create evaluation.'
+    // Another TA may have taken this pair since the page loaded; resync so
+    // the question list reflects what is actually still available.
+    await refreshCoverage()
   } finally {
     creating.value = false
   }
@@ -311,8 +334,14 @@ async function handleDelete(id: number) {
   deleteError.value = ''
   deleting.value = id
   try {
+    const removed = evaluations.value.find((e) => e.id === id)
     await deleteEvaluation(props.session.lab_session_id, id)
     evaluations.value = evaluations.value.filter((e) => e.id !== id)
+    if (removed) {
+      coverage.value = coverage.value.filter(
+        (c) => !(c.student_id === removed.student_id && c.question_id === removed.question_id),
+      )
+    }
   } catch (e: unknown) {
     deleteError.value = e instanceof Error ? e.message : 'Failed to delete evaluation.'
   } finally {
@@ -320,16 +349,26 @@ async function handleDelete(id: number) {
   }
 }
 
+async function refreshCoverage() {
+  try {
+    coverage.value = await getCoverage(props.session.lab_session_id)
+  } catch {
+    // Non-fatal: keep the current view rather than blanking the form.
+  }
+}
+
 onMounted(async () => {
   try {
-    const [s, q, e] = await Promise.all([
+    const [s, q, e, c] = await Promise.all([
       getStudents(props.session.lab_session_id),
       getQuestions(props.session.lab_session_id),
       getEvaluations(props.session.lab_session_id),
+      getCoverage(props.session.lab_session_id),
     ])
     students.value = s
     questions.value = q
     evaluations.value = e
+    coverage.value = c
   } finally {
     loading.value = false
   }
