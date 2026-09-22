@@ -191,6 +191,7 @@ import AppCombobox from '../common/AppCombobox.vue'
 import AppSelect from '../common/AppSelect.vue'
 import AppInput from '../common/AppInput.vue'
 import { formatDate } from '@/utils/date'
+import { apiErrorMessage } from '@/utils/errors'
 
 const props = defineProps<{ session: MySession }>()
 
@@ -289,7 +290,9 @@ async function handleCreate() {
     })
     form.value = { student_id: form.value.student_id, question_id: null, marking: null, remarks: '' }
   } catch (e: unknown) {
-    createError.value = e instanceof Error ? e.message : 'Failed to create evaluation.'
+    // apiErrorMessage yields '' for a cancelled request, so a silent
+    // session expiry redirects without flashing a banner.
+    createError.value = apiErrorMessage(e, 'Failed to create evaluation.')
     // Another TA may have taken this pair since the page loaded; resync so
     // the question list reflects what is actually still available.
     await refreshCoverage()
@@ -322,7 +325,9 @@ async function handleUpdate(id: number) {
     if (idx !== -1) evaluations.value[idx] = updated
     editingId.value = null
   } catch (e: unknown) {
-    updateError.value = e instanceof Error ? e.message : 'Failed to update evaluation.'
+    // apiErrorMessage yields '' for a cancelled request, so a silent
+    // session expiry redirects without flashing a banner.
+    updateError.value = apiErrorMessage(e, 'Failed to update evaluation.')
   } finally {
     saving.value = false
   }
@@ -343,7 +348,9 @@ async function handleDelete(id: number) {
       )
     }
   } catch (e: unknown) {
-    deleteError.value = e instanceof Error ? e.message : 'Failed to delete evaluation.'
+    // apiErrorMessage yields '' for a cancelled request, so a silent
+    // session expiry redirects without flashing a banner.
+    deleteError.value = apiErrorMessage(e, 'Failed to delete evaluation.')
   } finally {
     deleting.value = null
   }

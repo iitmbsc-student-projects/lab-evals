@@ -9,7 +9,11 @@ from google.oauth2 import id_token
 
 from app.core.config import get_settings
 from app.core.database import SessionLocal
-from app.core.security import create_access_token
+from app.core.security import (
+    create_access_token,
+    create_refresh_token,
+    decode_refresh_token,
+)
 from app.models.user import User
 
 settings = get_settings()
@@ -63,6 +67,38 @@ def get_or_create_user_from_google(claims: dict) -> User:
         db.close()
 
 
-def issue_jwt_for_user(user: User) -> str:
-    """Issue JWT for authenticated user."""
-    return create_access_token({"user_id": user.id})
+def issue_token_pair_for_user(user: User) -> tuple[str, str, int]:
+    """Issue (access_token, refresh_token, expires_in_seconds) for a user."""
+    claims = {"user_id": user.id}
+    return (
+        create_access_token(claims),
+        create_refresh_token(claims),
+        settings.JWT_EXPIRES_MINUTES * 60,
+    )
+
+
+def rotate_token_pair(refresh_token: str) -> tuple[str, str, int]:
+    """Validate a refresh token and issue a rotated token pair.
+
+    Raises ValueError if the token is not a valid, unexpired refresh
+    token, or if the user it names no longer exists.
+    """
+    try:
+        payload = decode_refresh_token(refresh_token)
+    except ValueError as e:
+        raise ValueError("Invalid or expired refresh token") from e
+
+    user_id = payload.get("user_id")
+    if user_id is None:
+        raise ValueError("Invalid or expired refresh token")
+
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter_by(id=user_id).one_or_none()
+        if not user:
+            # Same message as a bad token: do not reveal whether the
+            # account behind a validly signed token still exists.
+            raise ValueError("Invalid or expired refresh token")
+        return issue_token_pair_for_user(user)
+    finally:
+        db.close()

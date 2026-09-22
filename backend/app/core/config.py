@@ -17,7 +17,12 @@ class Settings:
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./dev.db")
     JWT_SECRET: str = os.getenv("JWT_SECRET", "super-secret-key")
     JWT_ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256")
-    JWT_EXPIRES_MINUTES: int = int(os.getenv("JWT_EXPIRES_MINUTES", "60"))
+    # Short-lived access token; the frontend silently refreshes it.
+    JWT_EXPIRES_MINUTES: int = int(os.getenv("JWT_EXPIRES_MINUTES", "30"))
+    # Long-lived refresh token; only its expiry forces a re-login.
+    REFRESH_TOKEN_EXPIRES_DAYS: int = int(
+        os.getenv("REFRESH_TOKEN_EXPIRES_DAYS", "7")
+    )
     GOOGLE_CLIENT_ID: str = os.getenv(
         "GOOGLE_CLIENT_ID", "your-google-client-id"
     )

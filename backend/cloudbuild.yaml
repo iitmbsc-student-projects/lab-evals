@@ -69,7 +69,7 @@ steps:
       - --service-account=${_RUNTIME_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com
       - --add-cloudsql-instances=${PROJECT_ID}:${_REGION}:${_SQL_INSTANCE_NAME}
       - --set-secrets=JWT_SECRET=jwt-secret:latest,GOOGLE_CLIENT_ID=google-client-id:latest,DATABASE_URL=database-url:latest
-      - --set-env-vars=ENV=production,JWT_ALGORITHM=HS256,JWT_EXPIRES_MINUTES=60,ADMIN_EMAIL=${_ADMIN_EMAIL},ADMIN_NAME=${_ADMIN_NAME},FRONTEND_ORIGIN=${_FRONTEND_ORIGIN}
+      - --set-env-vars=ENV=production,JWT_ALGORITHM=HS256,JWT_EXPIRES_MINUTES=30,REFRESH_TOKEN_EXPIRES_DAYS=7,ADMIN_EMAIL=${_ADMIN_EMAIL},ADMIN_NAME=${_ADMIN_NAME},FRONTEND_ORIGIN=${_FRONTEND_ORIGIN}
       - --allow-unauthenticated
       - --min-instances=0
       - --max-instances=2
