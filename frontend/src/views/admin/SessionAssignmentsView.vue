@@ -17,64 +17,85 @@
       </div>
     </div>
 
-    <!-- Session Picker -->
-    <div class="mb-4">
-      <AppSelect v-model="selectedSessionId" label="Select Lab Session" class="max-w-md">
-        <option :value="null">-- Select a session --</option>
-        <option v-for="session in labSessions" :key="session.id" :value="session.id">
-          {{ sessionLabel(session) }}
-        </option>
-      </AppSelect>
-    </div>
-
-    <div
-      v-if="actionError"
-      class="mb-4 p-3 bg-red-50 border border-red-200 rounded flex items-start justify-between gap-3"
+    <!-- Base data (session picker + user lookups) gates everything below it -->
+    <AppAsyncSection
+      :loading="baseLoading"
+      :error="baseError"
+      :has-content="labSessions.length > 0"
+      loading-text="Loading lab sessions..."
+      @retry="loadBase()"
     >
-      <p class="text-sm text-red-700">{{ actionError }}</p>
-      <button
-        @click="actionError = ''"
-        class="text-red-400 hover:text-red-600 transition-colors shrink-0"
-        aria-label="Dismiss error"
+      <!-- Session Picker -->
+      <div class="mb-4">
+        <AppSelect v-model="selectedSessionId" label="Select Lab Session" class="max-w-md">
+          <option :value="null">-- Select a session --</option>
+          <option v-for="session in labSessions" :key="session.id" :value="session.id">
+            {{ sessionLabel(session) }}
+          </option>
+        </AppSelect>
+      </div>
+
+      <div
+        v-if="actionError"
+        class="mb-4 p-3 bg-red-50 border border-red-200 rounded flex items-start justify-between gap-3"
       >
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-        </svg>
-      </button>
-    </div>
+        <p class="text-sm text-red-700">{{ actionError }}</p>
+        <button
+          @click="actionError = ''"
+          class="text-red-400 hover:text-red-600 transition-colors shrink-0"
+          aria-label="Dismiss error"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
 
-    <div v-if="!selectedSessionId" class="text-zinc-500 text-sm py-8 text-center">
-      Select a lab session to view and manage assignments.
-    </div>
+      <div v-if="!selectedSessionId" class="text-zinc-500 text-sm py-8 text-center">
+        Select a lab session to view and manage assignments.
+      </div>
 
-    <AppTable
-      v-else
-      :isEmpty="selectedSessionAssignments.length === 0"
-      emptyMessage="No assignments for this session. Add users or bulk upload a roster."
-    >
-      <template #head>
-        <th>ID</th>
-        <th>Name</th>
-        <th>Email</th>
-        <th>Role</th>
-        <th>Actions</th>
-      </template>
-      <tr v-for="assignment in selectedSessionAssignments" :key="assignment.id">
-        <td>{{ assignment.id }}</td>
-        <td>{{ getUserName(assignment.user_id) }}</td>
-        <td>{{ getUserEmail(assignment.user_id) }}</td>
-        <td>
-          <AppBadge :variant="assignment.role === 'ta' ? 'info' : 'default'">
-            {{ assignment.role }}
-          </AppBadge>
-        </td>
-        <td>
-          <AppButton variant="danger" size="sm" @click="deleteAssignmentHandler(assignment.id)"
-            >Delete</AppButton
-          >
-        </td>
-      </tr>
-    </AppTable>
+      <AppAsyncSection
+        v-else
+        :loading="assignmentsLoading"
+        :error="assignmentsError"
+        :has-content="selectedSessionAssignments.length > 0"
+        loading-text="Loading assignments..."
+        @retry="loadAssignments()"
+      >
+        <AppTable
+          :isEmpty="selectedSessionAssignments.length === 0"
+          emptyMessage="No assignments for this session. Add users or bulk upload a roster."
+        >
+          <template #head>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Role</th>
+            <th>Actions</th>
+          </template>
+          <tr v-for="assignment in selectedSessionAssignments" :key="assignment.id">
+            <td>{{ assignment.id }}</td>
+            <td>{{ getUserName(assignment.user_id) }}</td>
+            <td>{{ getUserEmail(assignment.user_id) }}</td>
+            <td>
+              <AppBadge :variant="assignment.role === 'ta' ? 'info' : 'default'">
+                {{ assignment.role }}
+              </AppBadge>
+            </td>
+            <td>
+              <AppButton
+                variant="danger"
+                size="sm"
+                :disabled="rowBusy"
+                @click="deleteAssignmentHandler(assignment.id)"
+                >{{ rowBusyKey === assignment.id ? 'Removing...' : 'Delete' }}</AppButton
+              >
+            </td>
+          </tr>
+        </AppTable>
+      </AppAsyncSection>
+    </AppAsyncSection>
 
     <!-- Add Assignment Modal -->
     <div
@@ -114,8 +135,10 @@
         </AppSelect>
         <p v-if="addError" class="text-sm text-red-600 mb-2">{{ addError }}</p>
         <div class="flex gap-2 mt-6 justify-end">
-          <AppButton @click="showAdd = false" variant="ghost">Cancel</AppButton>
-          <AppButton @click="addAssignmentHandler">Add</AppButton>
+          <AppButton @click="showAdd = false" variant="ghost" :disabled="adding">Cancel</AppButton>
+          <AppButton @click="addAssignmentHandler" :disabled="adding">{{
+            adding ? 'Adding...' : 'Add'
+          }}</AppButton>
         </div>
       </div>
     </div>
@@ -284,11 +307,12 @@
 
 <script setup lang="ts">
 // Admin Session Assignments view
-import { ref, onMounted, computed, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import Papa from 'papaparse'
 import AppButton from '../../components/common/AppButton.vue'
 import AppSelect from '../../components/common/AppSelect.vue'
 import AppCombobox from '../../components/common/AppCombobox.vue'
+import AppAsyncSection from '../../components/common/AppAsyncSection.vue'
 import AppTable from '../../components/common/AppTable.vue'
 import AppBadge from '../../components/common/AppBadge.vue'
 import {
@@ -307,9 +331,8 @@ import type {
   UserResponse,
   SubjectRole,
 } from '../../types/api'
-import { apiErrorMessage } from '../../utils/errors'
+import { useAsyncAction, useAsyncTask } from '../../composables/useAsync'
 
-const assignments = ref<SessionAssignment[]>([])
 const labSessions = ref<LabSession[]>([])
 const subjects = ref<SubjectResponse[]>([])
 const users = ref<UserResponse[]>([])
@@ -317,8 +340,6 @@ const selectedSessionId = ref<number | null>(null)
 const showAdd = ref(false)
 const newUserId = ref<number | null>(null)
 const newRole = ref<SubjectRole>('student')
-const addError = ref('')
-const actionError = ref('')
 
 // Bulk upload state
 const showBulkUpload = ref(false)
@@ -365,29 +386,49 @@ const userOptions = computed(() =>
   users.value.map((u) => ({ value: u.id, label: `${u.name} (${u.email})` })),
 )
 
-async function loadBase() {
-  ;[labSessions.value, subjects.value, users.value] = await Promise.all([
-    getLabSessions(),
-    getSubjects(),
-    getUsers(),
-  ])
-}
+const {
+  loading: baseLoading,
+  error: baseError,
+  run: loadBase,
+} = useAsyncTask(
+  async () => {
+    ;[labSessions.value, subjects.value, users.value] = await Promise.all([
+      getLabSessions(),
+      getSubjects(),
+      getUsers(),
+    ])
+  },
+  { immediate: true },
+)
 
-async function loadAssignments() {
-  if (!selectedSessionId.value) {
-    assignments.value = []
-    return
-  }
-  assignments.value = await getSessionAssignments(selectedSessionId.value)
-}
+// The roster is refetched every time the picked session changes, so a slow
+// earlier response must not overwrite a newer one.
+const assignments = ref<SessionAssignment[]>([])
+let latestRosterFetch = 0
 
-onMounted(async () => {
-  await loadBase()
-  await loadAssignments()
+const {
+  loading: assignmentsLoading,
+  error: assignmentsError,
+  run: loadAssignments,
+  refresh: refreshAssignments,
+} = useAsyncTask(async () => {
+  const call = ++latestRosterFetch
+  const sessionId = selectedSessionId.value
+  const roster = sessionId ? await getSessionAssignments(sessionId) : []
+  if (call === latestRosterFetch) assignments.value = roster
 })
 
-watch(selectedSessionId, async () => {
-  await loadAssignments()
+// Add is its own in-flight state (the modal button); row deletes share one.
+const { busy: adding, error: addError, run: runAdd } = useAsyncAction()
+const {
+  busy: rowBusy,
+  busyKey: rowBusyKey,
+  error: actionError,
+  run: runRowAction,
+} = useAsyncAction()
+
+watch(selectedSessionId, () => {
+  void loadAssignments()
 })
 
 function openAdd() {
@@ -396,36 +437,31 @@ function openAdd() {
 }
 
 async function addAssignmentHandler() {
-  if (!selectedSessionId.value || !newUserId.value) return
-  addError.value = ''
-  try {
+  const sessionId = selectedSessionId.value
+  const userId = newUserId.value
+  if (!sessionId || !userId) return
+  await runAdd(async () => {
     await createSessionAssignment({
-      lab_session_id: selectedSessionId.value,
-      user_id: newUserId.value,
+      lab_session_id: sessionId,
+      user_id: userId,
       role: newRole.value,
     })
-  } catch (e) {
-    addError.value = apiErrorMessage(e)
-    return
-  }
-  newUserId.value = null
-  newRole.value = 'student'
-  showAdd.value = false
-  await loadAssignments()
+    newUserId.value = null
+    newRole.value = 'student'
+    showAdd.value = false
+  })
+  // Silent: the roster stays on screen instead of collapsing into a spinner.
+  if (!addError.value) await refreshAssignments()
 }
 
 async function deleteAssignmentHandler(id: number) {
   if (!confirm('Are you sure you want to remove this assignment? This action cannot be undone.')) {
     return
   }
-  actionError.value = ''
-  try {
+  await runRowAction(async () => {
     await deleteSessionAssignment(id)
-  } catch (e) {
-    actionError.value = apiErrorMessage(e)
-    return
-  }
-  await loadAssignments()
+  }, id)
+  if (!actionError.value) await refreshAssignments()
 }
 
 // Bulk upload functions
@@ -554,7 +590,7 @@ async function startUpload() {
   }
 
   isUploading.value = false
-  await loadAssignments()
+  await refreshAssignments()
 }
 
 function closeBulkUpload() {

@@ -19,48 +19,51 @@
       This session is not currently accepting evaluations.
     </div>
 
-    <!-- Loading -->
-    <div v-if="loading" class="flex justify-center py-12">
-      <AppSpinner size="lg" text="Loading..." centered />
-    </div>
-
-    <!-- Questions table -->
-    <div v-else class="bg-white rounded-xl border border-zinc-200 shadow-sm overflow-hidden">
-      <div class="px-6 py-4 border-b border-zinc-100">
-        <h3 class="text-base font-semibold text-zinc-900">Questions</h3>
+    <AppAsyncSection
+      :loading="loading"
+      :error="error"
+      :has-content="questions.length > 0"
+      loading-text="Loading questions..."
+      @retry="load()"
+    >
+      <!-- Questions table -->
+      <div class="bg-white rounded-xl border border-zinc-200 shadow-sm overflow-hidden">
+        <div class="px-6 py-4 border-b border-zinc-100">
+          <h3 class="text-base font-semibold text-zinc-900">Questions</h3>
+        </div>
+        <AppTable :isEmpty="questions.length === 0" emptyMessage="No questions for this session.">
+          <template #head>
+            <th>#</th>
+            <th>Question</th>
+            <th>Status</th>
+          </template>
+          <tr v-for="(q, idx) in questions" :key="q.id">
+            <td class="text-zinc-500">{{ idx + 1 }}</td>
+            <td>{{ q.text }}</td>
+            <td>
+              <AppBadge :variant="isEvaluated(q.id) ? 'success' : 'warning'">
+                {{ isEvaluated(q.id) ? 'Evaluated' : 'Pending' }}
+              </AppBadge>
+            </td>
+          </tr>
+        </AppTable>
       </div>
-      <AppTable :isEmpty="questions.length === 0" emptyMessage="No questions for this session.">
-        <template #head>
-          <th>#</th>
-          <th>Question</th>
-          <th>Status</th>
-        </template>
-        <tr v-for="(q, idx) in questions" :key="q.id">
-          <td class="text-zinc-500">{{ idx + 1 }}</td>
-          <td>{{ q.text }}</td>
-          <td>
-            <AppBadge :variant="isEvaluated(q.id) ? 'success' : 'warning'">
-              {{ isEvaluated(q.id) ? 'Evaluated' : 'Pending' }}
-            </AppBadge>
-          </td>
-        </tr>
-      </AppTable>
-    </div>
+    </AppAsyncSection>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref } from 'vue'
 import type { MySession, QuestionResponse, StudentEvaluationResponse } from '../../types/api'
 import { getQuestions, getEvaluations } from '../../api/student'
-import AppSpinner from '../common/AppSpinner.vue'
+import AppAsyncSection from '../common/AppAsyncSection.vue'
 import AppTable from '../common/AppTable.vue'
 import AppBadge from '../common/AppBadge.vue'
+import { useAsyncTask } from '../../composables/useAsync'
 import { formatDate } from '@/utils/date'
 
 const props = defineProps<{ session: MySession }>()
 
-const loading = ref(true)
 const questions = ref<QuestionResponse[]>([])
 const evaluations = ref<StudentEvaluationResponse[]>([])
 
@@ -68,16 +71,19 @@ function isEvaluated(questionId: number): boolean {
   return evaluations.value.some((e) => e.question_id === questionId)
 }
 
-onMounted(async () => {
-  try {
+const {
+  loading,
+  error,
+  run: load,
+} = useAsyncTask(
+  async () => {
     const [q, e] = await Promise.all([
       getQuestions(props.session.lab_session_id),
       getEvaluations(props.session.lab_session_id),
     ])
     questions.value = q
     evaluations.value = e
-  } finally {
-    loading.value = false
-  }
-})
+  },
+  { immediate: true },
+)
 </script>

@@ -15,7 +15,12 @@
     </div>
     <!-- Subject Filter -->
     <div class="mb-4">
-      <AppSelect v-model="filterSubjectId" label="Filter by Subject" class="max-w-xs">
+      <AppSelect
+        v-model="filterSubjectId"
+        label="Filter by Subject"
+        class="max-w-xs"
+        :disabled="loading"
+      >
         <option value="">All Subjects</option>
         <option v-for="subject in subjects" :key="subject.id" :value="subject.id">
           {{ subject.name }}
@@ -38,73 +43,98 @@
         </svg>
       </button>
     </div>
-    <AppTable
-      :isEmpty="filteredSessions.length === 0"
-      emptyMessage="No lab sessions found. Add your first lab session or adjust your filters."
+    <AppAsyncSection
+      :loading="loading"
+      :error="loadError"
+      :has-content="sessions.length > 0"
+      loading-text="Loading lab sessions..."
+      @retry="load()"
     >
-      <template #head>
-        <th>ID</th>
-        <th>Subject</th>
-        <th>Date</th>
-        <th>Status</th>
-        <th>Actions</th>
-      </template>
-      <tr v-for="session in filteredSessions" :key="session.id">
-        <td class="font-mono text-xs text-zinc-500">{{ session.id }}</td>
-        <td>{{ getSubjectName(session.subject_id) }}</td>
-        <td v-if="editId !== session.id">{{ session.date }}</td>
-        <td v-else>
-          <input
-            type="date"
-            v-model="editDate"
-            class="w-full px-3 py-2 border border-zinc-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400"
-          />
-        </td>
-        <td v-if="editId !== session.id">
-          <AppBadge :variant="session.accepting_evaluations ? 'success' : 'default'">
-            {{ session.accepting_evaluations ? 'Open' : 'Closed' }}
-          </AppBadge>
-        </td>
-        <td v-else>
-          <label class="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" v-model="editAccepting" class="w-4 h-4 rounded" />
-            <span class="text-sm text-zinc-700">Open</span>
-          </label>
-        </td>
-        <td>
-          <div class="flex flex-wrap gap-2">
-            <AppButton
-              v-if="editId !== session.id"
-              @click="startEdit(session)"
-              variant="secondary"
-              size="sm"
-              >Edit</AppButton
-            >
-            <AppButton
-              v-if="editId === session.id"
-              @click="saveEdit(session.id)"
-              variant="success"
-              size="sm"
-              >Save</AppButton
-            >
-            <AppButton v-if="editId === session.id" @click="cancelEdit" variant="ghost" size="sm"
-              >Cancel</AppButton
-            >
-            <AppButton
-              v-if="editId !== session.id"
-              @click="toggleAccepting(session)"
-              variant="secondary"
-              size="sm"
-            >
-              {{ session.accepting_evaluations ? 'Close' : 'Open' }}
-            </AppButton>
-            <AppButton variant="danger" size="sm" @click="deleteSessionHandler(session.id)"
-              >Delete</AppButton
-            >
-          </div>
-        </td>
-      </tr>
-    </AppTable>
+      <AppTable
+        :isEmpty="filteredSessions.length === 0"
+        emptyMessage="No lab sessions found. Add your first lab session or adjust your filters."
+      >
+        <template #head>
+          <th>ID</th>
+          <th>Subject</th>
+          <th>Date</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </template>
+        <tr v-for="session in filteredSessions" :key="session.id">
+          <td class="font-mono text-xs text-zinc-500">{{ session.id }}</td>
+          <td>{{ getSubjectName(session.subject_id) }}</td>
+          <td v-if="editId !== session.id">{{ session.date }}</td>
+          <td v-else>
+            <input
+              type="date"
+              v-model="editDate"
+              class="w-full px-3 py-2 border border-zinc-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400"
+            />
+          </td>
+          <td v-if="editId !== session.id">
+            <AppBadge :variant="session.accepting_evaluations ? 'success' : 'default'">
+              {{ session.accepting_evaluations ? 'Open' : 'Closed' }}
+            </AppBadge>
+          </td>
+          <td v-else>
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" v-model="editAccepting" class="w-4 h-4 rounded" />
+              <span class="text-sm text-zinc-700">Open</span>
+            </label>
+          </td>
+          <td>
+            <div class="flex flex-wrap gap-2">
+              <AppButton
+                v-if="editId !== session.id"
+                @click="startEdit(session)"
+                variant="secondary"
+                size="sm"
+                :disabled="rowBusy"
+                >Edit</AppButton
+              >
+              <AppButton
+                v-if="editId === session.id"
+                @click="saveEdit(session.id)"
+                variant="success"
+                size="sm"
+                :disabled="rowBusy"
+                >{{ rowBusyKey === `save:${session.id}` ? 'Saving...' : 'Save' }}</AppButton
+              >
+              <AppButton
+                v-if="editId === session.id"
+                @click="cancelEdit"
+                variant="ghost"
+                size="sm"
+                :disabled="rowBusy"
+                >Cancel</AppButton
+              >
+              <AppButton
+                v-if="editId !== session.id"
+                @click="toggleAccepting(session)"
+                variant="secondary"
+                size="sm"
+                :disabled="rowBusy"
+              >
+                <template v-if="rowBusyKey === `toggle:${session.id}`">
+                  {{ session.accepting_evaluations ? 'Closing...' : 'Opening...' }}
+                </template>
+                <template v-else>
+                  {{ session.accepting_evaluations ? 'Close' : 'Open' }}
+                </template>
+              </AppButton>
+              <AppButton
+                variant="danger"
+                size="sm"
+                :disabled="rowBusy"
+                @click="deleteSessionHandler(session.id)"
+                >{{ rowBusyKey === `delete:${session.id}` ? 'Deleting...' : 'Delete' }}</AppButton
+              >
+            </div>
+          </td>
+        </tr>
+      </AppTable>
+    </AppAsyncSection>
 
     <!-- Create Modal -->
     <div
@@ -152,8 +182,12 @@
         </label>
         <p v-if="createError" class="text-sm text-red-600 mb-2">{{ createError }}</p>
         <div class="flex gap-2 mt-6 justify-end">
-          <AppButton @click="showCreate = false" variant="ghost">Cancel</AppButton>
-          <AppButton @click="createSessionHandler">Create Lab Session</AppButton>
+          <AppButton @click="showCreate = false" variant="ghost" :disabled="creating"
+            >Cancel</AppButton
+          >
+          <AppButton @click="createSessionHandler" :disabled="creating">{{
+            creating ? 'Creating...' : 'Create Lab Session'
+          }}</AppButton>
         </div>
       </div>
     </div>
@@ -162,9 +196,10 @@
 
 <script setup lang="ts">
 // Admin Lab Sessions CRUD view
-import { ref, onMounted, computed } from 'vue'
+import { ref, computed } from 'vue'
 import AppButton from '../../components/common/AppButton.vue'
 import AppSelect from '../../components/common/AppSelect.vue'
+import AppAsyncSection from '../../components/common/AppAsyncSection.vue'
 import AppTable from '../../components/common/AppTable.vue'
 import AppBadge from '../../components/common/AppBadge.vue'
 import {
@@ -175,15 +210,13 @@ import {
   setLabSessionAccepting,
   getSubjects,
 } from '../../api/admin'
-import { apiErrorMessage } from '../../utils/errors'
 import type { LabSession, SubjectResponse } from '../../types/api'
+import { useAsyncAction, useAsyncTask } from '../../composables/useAsync'
 
 const sessions = ref<LabSession[]>([])
 const subjects = ref<SubjectResponse[]>([])
 const filterSubjectId = ref<number | string>('')
 const showCreate = ref(false)
-const createError = ref('')
-const actionError = ref('')
 const newSubjectId = ref<number | null>(null)
 const newDate = ref('')
 const newAccepting = ref(false)
@@ -200,10 +233,27 @@ function getSubjectName(id: number) {
   return subjects.value.find((s) => s.id === id)?.name || ''
 }
 
-async function load() {
-  ;[sessions.value, subjects.value] = await Promise.all([getLabSessions(), getSubjects()])
-}
-onMounted(load)
+const {
+  loading,
+  error: loadError,
+  run: load,
+  refresh,
+} = useAsyncTask(
+  async () => {
+    ;[sessions.value, subjects.value] = await Promise.all([getLabSessions(), getSubjects()])
+  },
+  { immediate: true },
+)
+
+// Create is its own in-flight state (the modal button); the row actions
+// (edit / open-close / delete) share one, as only one can run at a time.
+const { busy: creating, error: createError, run: runCreate } = useAsyncAction()
+const {
+  busy: rowBusy,
+  busyKey: rowBusyKey,
+  error: actionError,
+  run: runRowAction,
+} = useAsyncAction()
 
 function openCreate() {
   createError.value = ''
@@ -211,23 +261,21 @@ function openCreate() {
 }
 
 async function createSessionHandler() {
-  if (!newSubjectId.value || !newDate.value) return
-  createError.value = ''
-  try {
+  const subjectId = newSubjectId.value
+  if (!subjectId || !newDate.value) return
+  await runCreate(async () => {
     await createLabSession({
-      subject_id: newSubjectId.value,
+      subject_id: subjectId,
       date: newDate.value,
       accepting_evaluations: newAccepting.value,
     })
-  } catch (e) {
-    createError.value = apiErrorMessage(e)
-    return
-  }
-  newSubjectId.value = null
-  newDate.value = ''
-  newAccepting.value = false
-  showCreate.value = false
-  await load()
+    newSubjectId.value = null
+    newDate.value = ''
+    newAccepting.value = false
+    showCreate.value = false
+  })
+  // Silent: the table stays on screen instead of collapsing into a spinner.
+  if (!createError.value) await refresh()
 }
 
 function startEdit(session: LabSession) {
@@ -238,20 +286,16 @@ function startEdit(session: LabSession) {
 
 async function saveEdit(id: number) {
   if (!editDate.value) return
-  actionError.value = ''
-  try {
+  await runRowAction(async () => {
     await updateLabSession(id, {
       date: editDate.value,
       accepting_evaluations: editAccepting.value,
     })
-  } catch (e) {
-    actionError.value = apiErrorMessage(e)
-    return
-  }
-  editId.value = null
-  editDate.value = ''
-  editAccepting.value = false
-  await load()
+    editId.value = null
+    editDate.value = ''
+    editAccepting.value = false
+  }, `save:${id}`)
+  if (!actionError.value) await refresh()
 }
 
 function cancelEdit() {
@@ -261,14 +305,10 @@ function cancelEdit() {
 }
 
 async function toggleAccepting(session: LabSession) {
-  actionError.value = ''
-  try {
+  await runRowAction(async () => {
     await setLabSessionAccepting(session.id, !session.accepting_evaluations)
-  } catch (e) {
-    actionError.value = apiErrorMessage(e)
-    return
-  }
-  await load()
+  }, `toggle:${session.id}`)
+  if (!actionError.value) await refresh()
 }
 
 async function deleteSessionHandler(id: number) {
@@ -277,13 +317,9 @@ async function deleteSessionHandler(id: number) {
   ) {
     return
   }
-  actionError.value = ''
-  try {
+  await runRowAction(async () => {
     await deleteLabSession(id)
-  } catch (e) {
-    actionError.value = apiErrorMessage(e)
-    return
-  }
-  await load()
+  }, `delete:${id}`)
+  if (!actionError.value) await refresh()
 }
 </script>
