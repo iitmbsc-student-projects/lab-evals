@@ -15,52 +15,89 @@
       </div>
     </div>
 
-    <AppTable
-      :isEmpty="subjects.length === 0"
-      emptyMessage="No subjects created yet. Add your first subject to get started."
+    <!-- Row action error banner (edit / delete) -->
+    <div
+      v-if="rowError"
+      class="mb-4 p-3 bg-red-50 border border-red-200 rounded flex items-start justify-between gap-3"
     >
-      <template #head>
-        <th>ID</th>
-        <th>Name</th>
-        <th>Description</th>
-        <th>Actions</th>
-      </template>
-      <tr v-for="subject in subjects" :key="subject.id">
-        <td class="font-mono text-xs text-zinc-500">{{ subject.id }}</td>
-        <td v-if="editId !== subject.id" class="font-medium">{{ subject.name }}</td>
-        <td v-else>
-          <AppInput v-model="editName" />
-        </td>
-        <td v-if="editId !== subject.id" class="text-zinc-600">{{ subject.description || '-' }}</td>
-        <td v-else>
-          <AppInput v-model="editDescription" />
-        </td>
-        <td>
-          <div class="flex gap-2">
-            <AppButton
-              v-if="editId !== subject.id"
-              @click="startEdit(subject)"
-              variant="secondary"
-              size="sm"
-              >Edit</AppButton
-            >
-            <AppButton
-              v-if="editId === subject.id"
-              @click="saveEdit(subject.id)"
-              variant="success"
-              size="sm"
-              >Save</AppButton
-            >
-            <AppButton v-if="editId === subject.id" @click="cancelEdit" variant="ghost" size="sm"
-              >Cancel</AppButton
-            >
-            <AppButton variant="danger" size="sm" @click="deleteSubjectHandler(subject.id)"
-              >Delete</AppButton
-            >
-          </div>
-        </td>
-      </tr>
-    </AppTable>
+      <p class="text-sm text-red-700">{{ rowError }}</p>
+      <button
+        @click="rowError = ''"
+        class="text-red-400 hover:text-red-600 transition-colors shrink-0"
+        aria-label="Dismiss error"
+      >
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+    <AppAsyncSection
+      :loading="loading"
+      :error="loadError"
+      :has-content="subjects.length > 0"
+      loading-text="Loading subjects..."
+      @retry="load()"
+    >
+      <AppTable
+        :isEmpty="subjects.length === 0"
+        emptyMessage="No subjects created yet. Add your first subject to get started."
+      >
+        <template #head>
+          <th>ID</th>
+          <th>Name</th>
+          <th>Description</th>
+          <th>Actions</th>
+        </template>
+        <tr v-for="subject in subjects" :key="subject.id">
+          <td class="font-mono text-xs text-zinc-500">{{ subject.id }}</td>
+          <td v-if="editId !== subject.id" class="font-medium">{{ subject.name }}</td>
+          <td v-else>
+            <AppInput v-model="editName" />
+          </td>
+          <td v-if="editId !== subject.id" class="text-zinc-600">
+            {{ subject.description || '-' }}
+          </td>
+          <td v-else>
+            <AppInput v-model="editDescription" />
+          </td>
+          <td>
+            <div class="flex gap-2">
+              <AppButton
+                v-if="editId !== subject.id"
+                @click="startEdit(subject)"
+                variant="secondary"
+                size="sm"
+                :disabled="rowBusy"
+                >Edit</AppButton
+              >
+              <AppButton
+                v-if="editId === subject.id"
+                @click="saveEdit(subject.id)"
+                variant="success"
+                size="sm"
+                :disabled="rowBusy"
+                >{{ rowBusyKey === `save:${subject.id}` ? 'Saving...' : 'Save' }}</AppButton
+              >
+              <AppButton
+                v-if="editId === subject.id"
+                @click="cancelEdit"
+                variant="ghost"
+                size="sm"
+                :disabled="rowBusy"
+                >Cancel</AppButton
+              >
+              <AppButton
+                variant="danger"
+                size="sm"
+                :disabled="rowBusy"
+                @click="deleteSubjectHandler(subject.id)"
+                >{{ rowBusyKey === `delete:${subject.id}` ? 'Deleting...' : 'Delete' }}</AppButton
+              >
+            </div>
+          </td>
+        </tr>
+      </AppTable>
+    </AppAsyncSection>
 
     <!-- Create Modal -->
     <div
@@ -98,9 +135,14 @@
           placeholder="Description (optional)"
           label="Description"
         />
+        <p v-if="createError" class="text-sm text-red-600 mt-3">{{ createError }}</p>
         <div class="flex gap-2 mt-6 justify-end">
-          <AppButton @click="showCreate = false" variant="ghost">Cancel</AppButton>
-          <AppButton @click="createSubjectHandler">Create Subject</AppButton>
+          <AppButton @click="showCreate = false" variant="ghost" :disabled="creating"
+            >Cancel</AppButton
+          >
+          <AppButton @click="createSubjectHandler" :disabled="creating">{{
+            creating ? 'Creating...' : 'Create Subject'
+          }}</AppButton>
         </div>
       </div>
     </div>
@@ -260,13 +302,15 @@
 
 <script setup lang="ts">
 // Admin Subjects CRUD view
-import { ref, onMounted } from 'vue'
+import { ref } from 'vue'
 import Papa from 'papaparse'
 import AppButton from '../../components/common/AppButton.vue'
 import AppInput from '../../components/common/AppInput.vue'
+import AppAsyncSection from '../../components/common/AppAsyncSection.vue'
 import AppTable from '../../components/common/AppTable.vue'
 import { getSubjects, createSubject, updateSubject, deleteSubject } from '../../api/admin'
 import type { SubjectResponse, SubjectCreate } from '../../types/api'
+import { useAsyncAction, useAsyncTask } from '../../composables/useAsync'
 
 const subjects = ref<SubjectResponse[]>([])
 const showCreate = ref(false)
@@ -285,21 +329,36 @@ const isUploading = ref(false)
 const uploadProgress = ref({ current: 0, total: 0 })
 const uploadResults = ref<{ success: string[]; errors: string[] }>({ success: [], errors: [] })
 
-async function load() {
-  subjects.value = await getSubjects()
-}
-onMounted(load)
+const {
+  loading,
+  error: loadError,
+  run: load,
+  refresh,
+} = useAsyncTask(
+  async () => {
+    subjects.value = await getSubjects()
+  },
+  { immediate: true },
+)
+
+// Create is its own in-flight state (the modal button); edit/delete share one
+// (only one row action can run at a time).
+const { busy: creating, error: createError, run: runCreate } = useAsyncAction()
+const { busy: rowBusy, busyKey: rowBusyKey, error: rowError, run: runRowAction } = useAsyncAction()
 
 async function createSubjectHandler() {
   if (!newName.value.trim()) return
-  await createSubject({
-    name: newName.value,
-    description: newDescription.value.trim() || null,
+  await runCreate(async () => {
+    await createSubject({
+      name: newName.value,
+      description: newDescription.value.trim() || null,
+    })
+    newName.value = ''
+    newDescription.value = ''
+    showCreate.value = false
   })
-  newName.value = ''
-  newDescription.value = ''
-  showCreate.value = false
-  await load()
+  // Silent: the table stays on screen instead of collapsing into a spinner.
+  if (!createError.value) await refresh()
 }
 
 function startEdit(subject: SubjectResponse) {
@@ -310,14 +369,16 @@ function startEdit(subject: SubjectResponse) {
 
 async function saveEdit(id: number) {
   if (!editName.value.trim()) return
-  await updateSubject(id, {
-    name: editName.value,
-    description: editDescription.value.trim() || null,
-  })
-  editId.value = null
-  editName.value = ''
-  editDescription.value = ''
-  await load()
+  await runRowAction(async () => {
+    await updateSubject(id, {
+      name: editName.value,
+      description: editDescription.value.trim() || null,
+    })
+    editId.value = null
+    editName.value = ''
+    editDescription.value = ''
+  }, `save:${id}`)
+  if (!rowError.value) await refresh()
 }
 
 function cancelEdit() {
@@ -332,8 +393,10 @@ async function deleteSubjectHandler(id: number) {
   if (!confirm(`Are you sure you want to delete ${subjectName}? This action cannot be undone.`)) {
     return
   }
-  await deleteSubject(id)
-  await load()
+  await runRowAction(async () => {
+    await deleteSubject(id)
+  }, `delete:${id}`)
+  if (!rowError.value) await refresh()
 }
 
 // Bulk upload functions
@@ -427,8 +490,8 @@ async function startUpload() {
 
   isUploading.value = false
 
-  // Reload the subjects list
-  await load()
+  // Reload the subjects list without tearing the table down.
+  await refresh()
 }
 
 function closeBulkUpload() {

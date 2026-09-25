@@ -16,56 +16,96 @@
     </div>
     <!-- Subject Filter -->
     <div class="mb-4">
-      <AppSelect v-model="selectedSubjectId" label="Filter by Subject" class="max-w-xs">
+      <AppSelect
+        v-model="selectedSubjectId"
+        label="Filter by Subject"
+        class="max-w-xs"
+        :disabled="loading"
+      >
         <option value="">All Subjects</option>
         <option v-for="subject in subjects" :key="subject.id" :value="subject.id">
           {{ subject.name }}
         </option>
       </AppSelect>
     </div>
-    <AppTable
-      :isEmpty="filteredQuestions.length === 0"
-      emptyMessage="No questions found. Add your first question or adjust your filters."
+    <!-- Row action error banner (edit / delete) -->
+    <div
+      v-if="rowError"
+      class="mb-4 p-3 bg-red-50 border border-red-200 rounded flex items-start justify-between gap-3"
     >
-      <template #head>
-        <th>ID</th>
-        <th>Subject</th>
-        <th>Text</th>
-        <th>Actions</th>
-      </template>
-      <tr v-for="question in filteredQuestions" :key="question.id">
-        <td>{{ question.id }}</td>
-        <td>{{ getSubjectName(question.subject_id) }}</td>
-        <td v-if="editId !== question.id">{{ question.text }}</td>
-        <td v-else>
-          <AppInput v-model="editText" />
-        </td>
-        <td>
-          <div class="flex gap-2">
-            <AppButton
-              v-if="editId !== question.id"
-              @click="startEdit(question)"
-              variant="secondary"
-              size="sm"
-              >Edit</AppButton
-            >
-            <AppButton
-              v-if="editId === question.id"
-              @click="saveEdit(question.id)"
-              variant="success"
-              size="sm"
-              >Save</AppButton
-            >
-            <AppButton v-if="editId === question.id" @click="cancelEdit" variant="ghost" size="sm"
-              >Cancel</AppButton
-            >
-            <AppButton variant="danger" size="sm" @click="deleteQuestionHandler(question.id)"
-              >Delete</AppButton
-            >
-          </div>
-        </td>
-      </tr>
-    </AppTable>
+      <p class="text-sm text-red-700">{{ rowError }}</p>
+      <button
+        @click="rowError = ''"
+        class="text-red-400 hover:text-red-600 transition-colors shrink-0"
+        aria-label="Dismiss error"
+      >
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+    <AppAsyncSection
+      :loading="loading"
+      :error="loadError"
+      :has-content="questions.length > 0"
+      loading-text="Loading questions..."
+      @retry="load()"
+    >
+      <AppTable
+        :isEmpty="filteredQuestions.length === 0"
+        emptyMessage="No questions found. Add your first question or adjust your filters."
+      >
+        <template #head>
+          <th>ID</th>
+          <th>Subject</th>
+          <th>Text</th>
+          <th>Actions</th>
+        </template>
+        <tr v-for="question in filteredQuestions" :key="question.id">
+          <td>{{ question.id }}</td>
+          <td>{{ getSubjectName(question.subject_id) }}</td>
+          <td v-if="editId !== question.id">{{ question.text }}</td>
+          <td v-else>
+            <AppInput v-model="editText" />
+          </td>
+          <td>
+            <div class="flex gap-2">
+              <AppButton
+                v-if="editId !== question.id"
+                @click="startEdit(question)"
+                variant="secondary"
+                size="sm"
+                :disabled="rowBusy"
+                >Edit</AppButton
+              >
+              <AppButton
+                v-if="editId === question.id"
+                @click="saveEdit(question.id)"
+                variant="success"
+                size="sm"
+                :disabled="rowBusy"
+                >{{ rowBusyKey === `save:${question.id}` ? 'Saving...' : 'Save' }}</AppButton
+              >
+              <AppButton
+                v-if="editId === question.id"
+                @click="cancelEdit"
+                variant="ghost"
+                size="sm"
+                :disabled="rowBusy"
+                >Cancel</AppButton
+              >
+              <AppButton
+                variant="danger"
+                size="sm"
+                :disabled="rowBusy"
+                @click="deleteQuestionHandler(question.id)"
+                >{{ rowBusyKey === `delete:${question.id}` ? 'Deleting...' : 'Delete' }}</AppButton
+              >
+            </div>
+          </td>
+        </tr>
+      </AppTable>
+    </AppAsyncSection>
     <!-- Create Modal -->
     <div
       v-if="showCreate"
@@ -96,9 +136,14 @@
           </option>
         </AppSelect>
         <AppInput v-model="newText" placeholder="Question text" label="Question Text" required />
+        <p v-if="createError" class="text-sm text-red-600 mt-3">{{ createError }}</p>
         <div class="flex gap-2 mt-6 justify-end">
-          <AppButton @click="showCreate = false" variant="ghost">Cancel</AppButton>
-          <AppButton @click="createQuestionHandler">Create Question</AppButton>
+          <AppButton @click="showCreate = false" variant="ghost" :disabled="creating"
+            >Cancel</AppButton
+          >
+          <AppButton @click="createQuestionHandler" :disabled="creating">{{
+            creating ? 'Creating...' : 'Create Question'
+          }}</AppButton>
         </div>
       </div>
     </div>
@@ -252,11 +297,12 @@
 
 <script setup lang="ts">
 // Admin Questions CRUD view
-import { ref, onMounted, computed } from 'vue'
+import { ref, computed } from 'vue'
 import Papa from 'papaparse'
 import AppButton from '../../components/common/AppButton.vue'
 import AppInput from '../../components/common/AppInput.vue'
 import AppSelect from '../../components/common/AppSelect.vue'
+import AppAsyncSection from '../../components/common/AppAsyncSection.vue'
 import AppTable from '../../components/common/AppTable.vue'
 import {
   getQuestions,
@@ -266,6 +312,7 @@ import {
   getSubjects,
 } from '../../api/admin'
 import type { QuestionResponse, SubjectResponse, QuestionCreate } from '../../types/api'
+import { useAsyncAction, useAsyncTask } from '../../composables/useAsync'
 
 const questions = ref<QuestionResponse[]>([])
 const subjects = ref<SubjectResponse[]>([])
@@ -286,10 +333,23 @@ const isUploading = ref(false)
 const uploadProgress = ref({ current: 0, total: 0 })
 const uploadResults = ref<{ success: string[]; errors: string[] }>({ success: [], errors: [] })
 
-async function load() {
-  ;[questions.value, subjects.value] = await Promise.all([getQuestions(), getSubjects()])
-}
-onMounted(load)
+const {
+  loading,
+  error: loadError,
+  run: load,
+  refresh,
+} = useAsyncTask(
+  async () => {
+    ;[questions.value, subjects.value] = await Promise.all([getQuestions(), getSubjects()])
+  },
+  { immediate: true },
+)
+
+// Create is its own in-flight state (the modal button); edit/delete share one
+// (only one row action can run at a time).
+const { busy: creating, error: createError, run: runCreate } = useAsyncAction()
+const { busy: rowBusy, busyKey: rowBusyKey, error: rowError, run: runRowAction } = useAsyncAction()
+
 const filteredQuestions = computed(() => {
   if (selectedSubjectId.value === null) {
     return questions.value
@@ -302,12 +362,16 @@ function getSubjectName(id: number) {
 }
 
 async function createQuestionHandler() {
-  if (!newSubjectId.value || !newText.value.trim()) return
-  await createQuestion({ subject_id: newSubjectId.value, text: newText.value })
-  newSubjectId.value = null
-  newText.value = ''
-  showCreate.value = false
-  await load()
+  const subjectId = newSubjectId.value
+  if (!subjectId || !newText.value.trim()) return
+  await runCreate(async () => {
+    await createQuestion({ subject_id: subjectId, text: newText.value })
+    newSubjectId.value = null
+    newText.value = ''
+    showCreate.value = false
+  })
+  // Silent: the table stays on screen instead of collapsing into a spinner.
+  if (!createError.value) await refresh()
 }
 
 function startEdit(question: QuestionResponse) {
@@ -317,12 +381,15 @@ function startEdit(question: QuestionResponse) {
 }
 
 async function saveEdit(id: number) {
-  if (!editText.value.trim() || !editSubjectId.value) return
-  await updateQuestion(id, { subject_id: editSubjectId.value, text: editText.value })
-  editId.value = null
-  editText.value = ''
-  editSubjectId.value = null
-  await load()
+  const subjectId = editSubjectId.value
+  if (!editText.value.trim() || !subjectId) return
+  await runRowAction(async () => {
+    await updateQuestion(id, { subject_id: subjectId, text: editText.value })
+    editId.value = null
+    editText.value = ''
+    editSubjectId.value = null
+  }, `save:${id}`)
+  if (!rowError.value) await refresh()
 }
 
 function cancelEdit() {
@@ -335,8 +402,10 @@ async function deleteQuestionHandler(id: number) {
   if (!confirm('Are you sure you want to delete this question? This action cannot be undone.')) {
     return
   }
-  await deleteQuestion(id)
-  await load()
+  await runRowAction(async () => {
+    await deleteQuestion(id)
+  }, `delete:${id}`)
+  if (!rowError.value) await refresh()
 }
 
 // Bulk upload functions
@@ -448,8 +517,8 @@ async function startUpload() {
 
   isUploading.value = false
 
-  // Reload the questions list
-  await load()
+  // Reload the questions list without tearing the table down.
+  await refresh()
 }
 
 function closeBulkUpload() {

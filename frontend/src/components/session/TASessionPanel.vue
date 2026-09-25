@@ -19,12 +19,13 @@
       disabled.
     </div>
 
-    <!-- Loading -->
-    <div v-if="loading" class="flex justify-center py-12">
-      <AppSpinner size="lg" text="Loading data..." centered />
-    </div>
-
-    <template v-else>
+    <AppAsyncSection
+      :loading="loading"
+      :error="error"
+      :has-content="questions.length > 0"
+      loading-text="Loading evaluations..."
+      @retry="load()"
+    >
       <!-- Create evaluation form -->
       <div class="bg-white rounded-xl border border-zinc-200 shadow-sm p-6">
         <h3 class="text-base font-semibold text-zinc-900 mb-4">Add Evaluation</h3>
@@ -160,12 +161,12 @@
           </tr>
         </AppTable>
       </div>
-    </template>
+    </AppAsyncSection>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import type {
   MySession,
   UserResponse,
@@ -183,19 +184,19 @@ import {
   updateEvaluation,
   deleteEvaluation,
 } from '../../api/ta'
-import AppSpinner from '../common/AppSpinner.vue'
+import AppAsyncSection from '../common/AppAsyncSection.vue'
 import AppBadge from '../common/AppBadge.vue'
 import AppButton from '../common/AppButton.vue'
 import AppTable from '../common/AppTable.vue'
 import AppCombobox from '../common/AppCombobox.vue'
 import AppSelect from '../common/AppSelect.vue'
 import AppInput from '../common/AppInput.vue'
+import { useAsyncTask } from '../../composables/useAsync'
 import { formatDate } from '@/utils/date'
 import { apiErrorMessage } from '@/utils/errors'
 
 const props = defineProps<{ session: MySession }>()
 
-const loading = ref(true)
 const creating = ref(false)
 const saving = ref(false)
 const deleting = ref<number | null>(null)
@@ -364,8 +365,12 @@ async function refreshCoverage() {
   }
 }
 
-onMounted(async () => {
-  try {
+const {
+  loading,
+  error,
+  run: load,
+} = useAsyncTask(
+  async () => {
     const [s, q, e, c] = await Promise.all([
       getStudents(props.session.lab_session_id),
       getQuestions(props.session.lab_session_id),
@@ -376,8 +381,7 @@ onMounted(async () => {
     questions.value = q
     evaluations.value = e
     coverage.value = c
-  } finally {
-    loading.value = false
-  }
-})
+  },
+  { immediate: true },
+)
 </script>

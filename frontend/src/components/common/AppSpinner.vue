@@ -1,10 +1,20 @@
 <!--
   AppSpinner.vue
-  Loading spinner component for async operations.
+  Decorative loading spinner. It announces nothing on its own: the SVG is
+  aria-hidden, and the live region that announces a load lives in
+  AppAsyncSection (a region must be mounted before its text changes to be
+  read out). Pass `label` only where the spinner is the sole indicator and
+  needs a screen-reader-only name of its own.
 -->
 <template>
   <div :class="containerClasses">
-    <svg :class="spinnerClasses" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+    <svg
+      :class="spinnerClasses"
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
       <circle
         class="opacity-25"
         cx="12"
@@ -20,6 +30,7 @@
       ></path>
     </svg>
     <span v-if="text" :class="textClasses">{{ text }}</span>
+    <span v-else-if="label" class="sr-only">{{ label }}</span>
   </div>
 </template>
 
@@ -29,6 +40,9 @@ import { computed } from 'vue'
 const props = defineProps<{
   size?: 'sm' | 'md' | 'lg'
   text?: string
+  // Opt-in screen-reader-only label, for a spinner with no visible `text`
+  // and no surrounding label of its own.
+  label?: string
   centered?: boolean
 }>()
 

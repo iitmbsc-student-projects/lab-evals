@@ -21,7 +21,12 @@
     </div>
     <!-- Subject Filter -->
     <div class="mb-4">
-      <AppSelect v-model="filterSubjectId" label="Filter by Subject" class="max-w-xs">
+      <AppSelect
+        v-model="filterSubjectId"
+        label="Filter by Subject"
+        class="max-w-xs"
+        :disabled="loading"
+      >
         <option value="">All Subjects</option>
         <option v-for="subject in subjects" :key="subject.id" :value="subject.id">
           {{ subject.name }}
@@ -43,64 +48,85 @@
         </svg>
       </button>
     </div>
-    <AppTable
-      :isEmpty="filteredEvaluations.length === 0"
-      emptyMessage="No evaluations found. Add your first evaluation or adjust your filters."
+    <AppAsyncSection
+      :loading="loading"
+      :error="loadError"
+      :has-content="evaluations.length > 0"
+      loading-text="Loading evaluations..."
+      @retry="load()"
     >
-      <template #head>
-        <th>ID</th>
-        <th>Student Email</th>
-        <th>Subject</th>
-        <th>Question</th>
-        <th>TA</th>
-        <th>Session</th>
-        <th>Marking</th>
-        <th>Remarks</th>
-        <th>Actions</th>
-      </template>
-      <tr v-for="evaluation in filteredEvaluations" :key="evaluation.id">
-        <td>{{ evaluation.id }}</td>
-        <td>{{ getUserEmail(evaluation.student_id) }}</td>
-        <td>{{ getQuestionSubject(evaluation.question_id) }}</td>
-        <td>{{ getQuestionText(evaluation.question_id) }}</td>
-        <td>{{ getUserName(evaluation.ta_id) }}</td>
-        <td>{{ getSessionLabel(evaluation.lab_session_id) }}</td>
-        <td v-if="editId !== evaluation.id">{{ evaluation.marking }} / 5</td>
-        <td v-else>
-          <AppSelect v-model.number="editMarking">
-            <option v-for="n in 5" :key="n" :value="n">{{ n }} / 5</option>
-          </AppSelect>
-        </td>
-        <td v-if="editId !== evaluation.id">{{ evaluation.remarks }}</td>
-        <td v-else>
-          <AppInput v-model="editRemarks" />
-        </td>
-        <td>
-          <div class="flex gap-2">
-            <AppButton
-              v-if="editId !== evaluation.id"
-              @click="startEdit(evaluation)"
-              variant="secondary"
-              size="sm"
-              >Edit</AppButton
-            >
-            <AppButton
-              v-if="editId === evaluation.id"
-              @click="saveEdit(evaluation.id)"
-              variant="success"
-              size="sm"
-              >Save</AppButton
-            >
-            <AppButton v-if="editId === evaluation.id" @click="cancelEdit" variant="ghost" size="sm"
-              >Cancel</AppButton
-            >
-            <AppButton variant="danger" size="sm" @click="deleteEvaluationHandler(evaluation.id)"
-              >Delete</AppButton
-            >
-          </div>
-        </td>
-      </tr>
-    </AppTable>
+      <AppTable
+        :isEmpty="filteredEvaluations.length === 0"
+        emptyMessage="No evaluations found. Add your first evaluation or adjust your filters."
+      >
+        <template #head>
+          <th>ID</th>
+          <th>Student Email</th>
+          <th>Subject</th>
+          <th>Question</th>
+          <th>TA</th>
+          <th>Session</th>
+          <th>Marking</th>
+          <th>Remarks</th>
+          <th>Actions</th>
+        </template>
+        <tr v-for="evaluation in filteredEvaluations" :key="evaluation.id">
+          <td>{{ evaluation.id }}</td>
+          <td>{{ getUserEmail(evaluation.student_id) }}</td>
+          <td>{{ getQuestionSubject(evaluation.question_id) }}</td>
+          <td>{{ getQuestionText(evaluation.question_id) }}</td>
+          <td>{{ getUserName(evaluation.ta_id) }}</td>
+          <td>{{ getSessionLabel(evaluation.lab_session_id) }}</td>
+          <td v-if="editId !== evaluation.id">{{ evaluation.marking }} / 5</td>
+          <td v-else>
+            <AppSelect v-model.number="editMarking">
+              <option v-for="n in 5" :key="n" :value="n">{{ n }} / 5</option>
+            </AppSelect>
+          </td>
+          <td v-if="editId !== evaluation.id">{{ evaluation.remarks }}</td>
+          <td v-else>
+            <AppInput v-model="editRemarks" />
+          </td>
+          <td>
+            <div class="flex gap-2">
+              <AppButton
+                v-if="editId !== evaluation.id"
+                @click="startEdit(evaluation)"
+                variant="secondary"
+                size="sm"
+                :disabled="rowBusy"
+                >Edit</AppButton
+              >
+              <AppButton
+                v-if="editId === evaluation.id"
+                @click="saveEdit(evaluation.id)"
+                variant="success"
+                size="sm"
+                :disabled="rowBusy"
+                >{{ rowBusyKey === `save:${evaluation.id}` ? 'Saving...' : 'Save' }}</AppButton
+              >
+              <AppButton
+                v-if="editId === evaluation.id"
+                @click="cancelEdit"
+                variant="ghost"
+                size="sm"
+                :disabled="rowBusy"
+                >Cancel</AppButton
+              >
+              <AppButton
+                variant="danger"
+                size="sm"
+                :disabled="rowBusy"
+                @click="deleteEvaluationHandler(evaluation.id)"
+                >{{
+                  rowBusyKey === `delete:${evaluation.id}` ? 'Deleting...' : 'Delete'
+                }}</AppButton
+              >
+            </div>
+          </td>
+        </tr>
+      </AppTable>
+    </AppAsyncSection>
     <!-- Create Modal -->
     <div
       v-if="showCreate"
@@ -136,10 +162,21 @@
             {{ getSessionLabel(session.id) }}
           </option>
         </AppSelect>
+        <!-- Roster state, so "loading" and "nobody is on this roster" read differently -->
+        <div v-if="newLabSessionId" class="mb-3">
+          <AppSpinner v-if="rosterLoading" size="sm" text="Loading session roster..." />
+          <p v-else-if="rosterError" class="text-sm text-red-600" role="alert">
+            {{ rosterError }}
+            <button class="underline hover:text-red-800" @click="loadRoster()">Retry</button>
+          </p>
+          <p v-else-if="sessionRoster.length === 0" class="text-sm text-zinc-500">
+            No students or TAs are assigned to this session yet.
+          </p>
+        </div>
         <AppCombobox
           v-model="newStudentId"
           :options="sessionStudentOptions"
-          :disabled="!newLabSessionId || sessionRosterLoading"
+          :disabled="!newLabSessionId || rosterLoading"
           label="Student"
           placeholder="Search student by name or email..."
           required
@@ -148,7 +185,7 @@
         <AppCombobox
           v-model="newTaId"
           :options="sessionTaOptions"
-          :disabled="!newLabSessionId || sessionRosterLoading"
+          :disabled="!newLabSessionId || rosterLoading"
           label="TA"
           placeholder="Search TA by name or email..."
           required
@@ -176,8 +213,12 @@
         <AppInput v-model="newRemarks" placeholder="Remarks (optional)" label="Remarks" />
         <p v-if="createError" class="text-sm text-red-600 mt-3">{{ createError }}</p>
         <div class="flex gap-2 mt-6 justify-end">
-          <AppButton @click="showCreate = false" variant="ghost">Cancel</AppButton>
-          <AppButton @click="createEvaluationHandler">Create Evaluation</AppButton>
+          <AppButton @click="showCreate = false" variant="ghost" :disabled="creating"
+            >Cancel</AppButton
+          >
+          <AppButton @click="createEvaluationHandler" :disabled="creating">{{
+            creating ? 'Creating...' : 'Create Evaluation'
+          }}</AppButton>
         </div>
       </div>
     </div>
@@ -186,12 +227,14 @@
 
 <script setup lang="ts">
 // Admin Evaluations CRUD view
-import { ref, onMounted, computed, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import Papa from 'papaparse'
 import AppButton from '../../components/common/AppButton.vue'
 import AppInput from '../../components/common/AppInput.vue'
 import AppSelect from '../../components/common/AppSelect.vue'
 import AppCombobox from '../../components/common/AppCombobox.vue'
+import AppAsyncSection from '../../components/common/AppAsyncSection.vue'
+import AppSpinner from '../../components/common/AppSpinner.vue'
 import AppTable from '../../components/common/AppTable.vue'
 import {
   getEvaluations,
@@ -213,7 +256,7 @@ import type {
   LabSession,
   SessionAssignment,
 } from '../../types/api'
-import { apiErrorMessage } from '../../utils/errors'
+import { useAsyncAction, useAsyncTask } from '../../composables/useAsync'
 
 const evaluations = ref<EvaluationResponse[]>([])
 const users = ref<UserResponse[]>([])
@@ -221,8 +264,6 @@ const questions = ref<QuestionResponse[]>([])
 const subjects = ref<SubjectResponse[]>([])
 const labSessions = ref<LabSession[]>([])
 const showCreate = ref(false)
-const createError = ref('')
-const actionError = ref('')
 const newLabSessionId = ref<number | null>(null)
 const newStudentId = ref<number | null>(null)
 const newQuestionId = ref<number | null>(null)
@@ -234,21 +275,50 @@ const editMarking = ref<Marking>(5)
 const editRemarks = ref('')
 const filterSubjectId = ref<number | string>('')
 
-// Session roster state for the create modal
+// Session roster for the create modal. Refetched on every session change, so
+// a slow earlier response must not overwrite a newer one.
 const sessionRoster = ref<SessionAssignment[]>([])
-const sessionRosterLoading = ref(false)
+let latestRosterFetch = 0
 
-async function load() {
-  ;[evaluations.value, users.value, questions.value, subjects.value, labSessions.value] =
-    await Promise.all([
-      getEvaluations(),
-      getUsers(),
-      getQuestions(),
-      getSubjects(),
-      getLabSessions(),
-    ])
-}
-onMounted(load)
+const {
+  loading,
+  error: loadError,
+  run: load,
+  refresh,
+} = useAsyncTask(
+  async () => {
+    ;[evaluations.value, users.value, questions.value, subjects.value, labSessions.value] =
+      await Promise.all([
+        getEvaluations(),
+        getUsers(),
+        getQuestions(),
+        getSubjects(),
+        getLabSessions(),
+      ])
+  },
+  { immediate: true },
+)
+
+const {
+  loading: rosterLoading,
+  error: rosterError,
+  run: loadRoster,
+} = useAsyncTask(async () => {
+  const call = ++latestRosterFetch
+  const sessionId = newLabSessionId.value
+  const roster = sessionId ? await getSessionAssignments(sessionId) : []
+  if (call === latestRosterFetch) sessionRoster.value = roster
+})
+
+// Create is its own in-flight state (the modal button); edit/delete share one
+// (only one row action can run at a time).
+const { busy: creating, error: createError, run: runCreate } = useAsyncAction()
+const {
+  busy: rowBusy,
+  busyKey: rowBusyKey,
+  error: actionError,
+  run: runRowAction,
+} = useAsyncAction()
 
 function getUserName(id: number) {
   return users.value.find((u) => u.id === id)?.name || ''
@@ -346,23 +416,12 @@ const sessionQuestionOptions = computed(() => {
 // Reset dependent pickers + reload the roster whenever the session changes
 // (watch, not @change, so programmatic changes are handled too).
 watch(newLabSessionId, () => {
-  onSessionChange()
-})
-
-async function onSessionChange() {
-  // Reset dependent pickers when session changes
   newStudentId.value = null
   newTaId.value = null
   newQuestionId.value = null
   sessionRoster.value = []
-  if (!newLabSessionId.value) return
-  sessionRosterLoading.value = true
-  try {
-    sessionRoster.value = await getSessionAssignments(newLabSessionId.value)
-  } finally {
-    sessionRosterLoading.value = false
-  }
-}
+  void loadRoster()
+})
 
 function openCreate() {
   createError.value = ''
@@ -370,37 +429,31 @@ function openCreate() {
 }
 
 async function createEvaluationHandler() {
-  if (
-    !newLabSessionId.value ||
-    !newStudentId.value ||
-    !newQuestionId.value ||
-    !newTaId.value ||
-    !newMarking.value
-  )
-    return
-  createError.value = ''
-  try {
+  const labSessionId = newLabSessionId.value
+  const studentId = newStudentId.value
+  const questionId = newQuestionId.value
+  const taId = newTaId.value
+  if (!labSessionId || !studentId || !questionId || !taId || !newMarking.value) return
+  await runCreate(async () => {
     await createEvaluation({
-      lab_session_id: newLabSessionId.value,
-      student_id: newStudentId.value,
-      question_id: newQuestionId.value,
-      ta_id: newTaId.value,
+      lab_session_id: labSessionId,
+      student_id: studentId,
+      question_id: questionId,
+      ta_id: taId,
       marking: newMarking.value,
       remarks: newRemarks.value || null,
     })
-  } catch (e) {
-    createError.value = apiErrorMessage(e)
-    return
-  }
-  newLabSessionId.value = null
-  newStudentId.value = null
-  newQuestionId.value = null
-  newTaId.value = null
-  newMarking.value = 5
-  newRemarks.value = ''
-  sessionRoster.value = []
-  showCreate.value = false
-  await load()
+    newLabSessionId.value = null
+    newStudentId.value = null
+    newQuestionId.value = null
+    newTaId.value = null
+    newMarking.value = 5
+    newRemarks.value = ''
+    sessionRoster.value = []
+    showCreate.value = false
+  })
+  // Silent: the table stays on screen instead of collapsing into a spinner.
+  if (!createError.value) await refresh()
 }
 
 function startEdit(evaluation: EvaluationResponse) {
@@ -412,8 +465,7 @@ function startEdit(evaluation: EvaluationResponse) {
 async function saveEdit(id: number) {
   const ev = evaluations.value.find((e) => e.id === id)
   if (!ev) return
-  actionError.value = ''
-  try {
+  await runRowAction(async () => {
     await updateEvaluation(id, {
       lab_session_id: ev.lab_session_id,
       student_id: ev.student_id,
@@ -422,14 +474,11 @@ async function saveEdit(id: number) {
       marking: editMarking.value,
       remarks: editRemarks.value || null,
     })
-  } catch (e) {
-    actionError.value = apiErrorMessage(e)
-    return
-  }
-  editId.value = null
-  editMarking.value = 5
-  editRemarks.value = ''
-  await load()
+    editId.value = null
+    editMarking.value = 5
+    editRemarks.value = ''
+  }, `save:${id}`)
+  if (!actionError.value) await refresh()
 }
 
 function cancelEdit() {
@@ -442,13 +491,9 @@ async function deleteEvaluationHandler(id: number) {
   if (!confirm('Are you sure you want to delete this evaluation? This action cannot be undone.')) {
     return
   }
-  actionError.value = ''
-  try {
+  await runRowAction(async () => {
     await deleteEvaluation(id)
-  } catch (e) {
-    actionError.value = apiErrorMessage(e)
-    return
-  }
-  await load()
+  }, `delete:${id}`)
+  if (!actionError.value) await refresh()
 }
 </script>

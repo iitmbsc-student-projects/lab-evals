@@ -14,64 +14,99 @@
         <AppButton @click="showBulkUpload = true" variant="secondary">Bulk Upload CSV</AppButton>
       </div>
     </div>
-    <AppTable
-      :isEmpty="users.length === 0"
-      emptyMessage="No users found. Add your first user or use bulk upload."
+    <!-- Row action error banner (edit / delete) -->
+    <div
+      v-if="rowError"
+      class="mb-4 p-3 bg-red-50 border border-red-200 rounded flex items-start justify-between gap-3"
     >
-      <template #head>
-        <th>ID</th>
-        <th>Name</th>
-        <th>Email</th>
-        <th>Admin?</th>
-        <th>Actions</th>
-      </template>
-      <tr v-for="user in users" :key="user.id">
-        <td>{{ user.id }}</td>
-        <td v-if="editId !== user.id">{{ user.name }}</td>
-        <td v-else>
-          <AppInput v-model="editName" />
-        </td>
-        <td v-if="editId !== user.id">{{ user.email }}</td>
-        <td v-else>
-          <AppInput v-model="editEmail" />
-        </td>
-        <td v-if="editId !== user.id">
-          <AppBadge :variant="user.is_admin ? 'purple' : 'default'">
-            {{ user.is_admin ? 'Yes' : 'No' }}
-          </AppBadge>
-        </td>
-        <td v-else>
-          <label class="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" v-model="editIsAdmin" class="w-4 h-4 rounded" />
-            <span class="text-sm text-zinc-700">Admin</span>
-          </label>
-        </td>
-        <td>
-          <div class="flex gap-2">
-            <AppButton
-              v-if="editId !== user.id"
-              @click="startEdit(user)"
-              variant="secondary"
-              size="sm"
-              >Edit</AppButton
-            >
-            <AppButton
-              v-if="editId === user.id"
-              @click="saveEdit(user.id)"
-              variant="success"
-              size="sm"
-              >Save</AppButton
-            >
-            <AppButton v-if="editId === user.id" @click="cancelEdit" variant="ghost" size="sm"
-              >Cancel</AppButton
-            >
-            <AppButton variant="danger" size="sm" @click="deleteUserHandler(user.id)"
-              >Delete</AppButton
-            >
-          </div>
-        </td>
-      </tr>
-    </AppTable>
+      <p class="text-sm text-red-700">{{ rowError }}</p>
+      <button
+        @click="rowError = ''"
+        class="text-red-400 hover:text-red-600 transition-colors shrink-0"
+        aria-label="Dismiss error"
+      >
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+    <AppAsyncSection
+      :loading="loading"
+      :error="loadError"
+      :has-content="users.length > 0"
+      loading-text="Loading users..."
+      @retry="load()"
+    >
+      <AppTable
+        :isEmpty="users.length === 0"
+        emptyMessage="No users found. Add your first user or use bulk upload."
+      >
+        <template #head>
+          <th>ID</th>
+          <th>Name</th>
+          <th>Email</th>
+          <th>Admin?</th>
+          <th>Actions</th>
+        </template>
+        <tr v-for="user in users" :key="user.id">
+          <td>{{ user.id }}</td>
+          <td v-if="editId !== user.id">{{ user.name }}</td>
+          <td v-else>
+            <AppInput v-model="editName" />
+          </td>
+          <td v-if="editId !== user.id">{{ user.email }}</td>
+          <td v-else>
+            <AppInput v-model="editEmail" />
+          </td>
+          <td v-if="editId !== user.id">
+            <AppBadge :variant="user.is_admin ? 'purple' : 'default'">
+              {{ user.is_admin ? 'Yes' : 'No' }}
+            </AppBadge>
+          </td>
+          <td v-else>
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" v-model="editIsAdmin" class="w-4 h-4 rounded" />
+              <span class="text-sm text-zinc-700">Admin</span>
+            </label>
+          </td>
+          <td>
+            <div class="flex gap-2">
+              <AppButton
+                v-if="editId !== user.id"
+                @click="startEdit(user)"
+                variant="secondary"
+                size="sm"
+                :disabled="rowBusy"
+                >Edit</AppButton
+              >
+              <AppButton
+                v-if="editId === user.id"
+                @click="saveEdit(user.id)"
+                variant="success"
+                size="sm"
+                :disabled="rowBusy"
+                >{{ rowBusyKey === `save:${user.id}` ? 'Saving...' : 'Save' }}</AppButton
+              >
+              <AppButton
+                v-if="editId === user.id"
+                @click="cancelEdit"
+                variant="ghost"
+                size="sm"
+                :disabled="rowBusy"
+                >Cancel</AppButton
+              >
+              <AppButton
+                variant="danger"
+                size="sm"
+                :disabled="rowBusy"
+                @click="deleteUserHandler(user.id)"
+                >{{ rowBusyKey === `delete:${user.id}` ? 'Deleting...' : 'Delete' }}</AppButton
+              >
+            </div>
+          </td>
+        </tr>
+      </AppTable>
+    </AppAsyncSection>
     <!-- Create Modal -->
     <div
       v-if="showCreate"
@@ -102,9 +137,14 @@
           <input type="checkbox" v-model="newIsAdmin" class="w-4 h-4 rounded" />
           <span class="text-sm font-medium text-zinc-700">Admin user</span>
         </label>
+        <p v-if="createError" class="text-sm text-red-600 mt-3">{{ createError }}</p>
         <div class="flex gap-2 mt-6 justify-end">
-          <AppButton @click="showCreate = false" variant="ghost">Cancel</AppButton>
-          <AppButton @click="createUserHandler">Create User</AppButton>
+          <AppButton @click="showCreate = false" variant="ghost" :disabled="creating"
+            >Cancel</AppButton
+          >
+          <AppButton @click="createUserHandler" :disabled="creating">{{
+            creating ? 'Creating...' : 'Create User'
+          }}</AppButton>
         </div>
       </div>
     </div>
@@ -270,14 +310,16 @@
 
 <script setup lang="ts">
 // Admin Users CRUD view
-import { ref, onMounted } from 'vue'
+import { ref } from 'vue'
 import Papa from 'papaparse'
 import AppButton from '../../components/common/AppButton.vue'
 import AppInput from '../../components/common/AppInput.vue'
 import AppBadge from '../../components/common/AppBadge.vue'
+import AppAsyncSection from '../../components/common/AppAsyncSection.vue'
 import AppTable from '../../components/common/AppTable.vue'
 import { getUsers, createUser, updateUser, deleteUser } from '../../api/admin'
 import type { UserResponse, UserCreate } from '../../types/api'
+import { useAsyncAction, useAsyncTask } from '../../composables/useAsync'
 
 const users = ref<UserResponse[]>([])
 const showCreate = ref(false)
@@ -303,19 +345,34 @@ const uploadResults = ref<{ success: string[]; skipped: number; errors: string[]
   errors: [],
 })
 
-async function load() {
-  users.value = await getUsers()
-}
-onMounted(load)
+const {
+  loading,
+  error: loadError,
+  run: load,
+  refresh,
+} = useAsyncTask(
+  async () => {
+    users.value = await getUsers()
+  },
+  { immediate: true },
+)
+
+// Create is its own in-flight state (the modal button); edit/delete share one
+// (only one row action can run at a time).
+const { busy: creating, error: createError, run: runCreate } = useAsyncAction()
+const { busy: rowBusy, busyKey: rowBusyKey, error: rowError, run: runRowAction } = useAsyncAction()
 
 async function createUserHandler() {
   if (!newName.value.trim() || !newEmail.value.trim()) return
-  await createUser({ name: newName.value, email: newEmail.value, is_admin: newIsAdmin.value })
-  newName.value = ''
-  newEmail.value = ''
-  newIsAdmin.value = false
-  showCreate.value = false
-  await load()
+  await runCreate(async () => {
+    await createUser({ name: newName.value, email: newEmail.value, is_admin: newIsAdmin.value })
+    newName.value = ''
+    newEmail.value = ''
+    newIsAdmin.value = false
+    showCreate.value = false
+  })
+  // Silent: the table stays on screen instead of collapsing into a spinner.
+  if (!createError.value) await refresh()
 }
 
 function startEdit(user: UserResponse) {
@@ -327,12 +384,18 @@ function startEdit(user: UserResponse) {
 
 async function saveEdit(id: number) {
   if (!editName.value.trim() || !editEmail.value.trim()) return
-  await updateUser(id, { name: editName.value, email: editEmail.value, is_admin: editIsAdmin.value })
-  editId.value = null
-  editName.value = ''
-  editEmail.value = ''
-  editIsAdmin.value = false
-  await load()
+  await runRowAction(async () => {
+    await updateUser(id, {
+      name: editName.value,
+      email: editEmail.value,
+      is_admin: editIsAdmin.value,
+    })
+    editId.value = null
+    editName.value = ''
+    editEmail.value = ''
+    editIsAdmin.value = false
+  }, `save:${id}`)
+  if (!rowError.value) await refresh()
 }
 
 function cancelEdit() {
@@ -348,8 +411,10 @@ async function deleteUserHandler(id: number) {
   if (!confirm(`Are you sure you want to delete ${userName}? This action cannot be undone.`)) {
     return
   }
-  await deleteUser(id)
-  await load()
+  await runRowAction(async () => {
+    await deleteUser(id)
+  }, `delete:${id}`)
+  if (!rowError.value) await refresh()
 }
 
 // Bulk upload functions
@@ -484,8 +549,8 @@ async function startUpload() {
 
   isUploading.value = false
 
-  // Reload the users list
-  await load()
+  // Reload the users list without tearing the table down.
+  await refresh()
 }
 
 function closeBulkUpload() {
