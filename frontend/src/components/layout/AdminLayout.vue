@@ -29,6 +29,14 @@
     <nav class="bg-white border-b border-zinc-200 shadow-sm">
       <div class="max-w-7xl mx-auto flex gap-1 overflow-x-auto no-scrollbar px-4 sm:px-6 py-3">
         <RouterLink
+          to="/admin/dashboard"
+          class="px-4 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap shrink-0"
+          active-class="bg-zinc-800 text-white"
+          :class="$route.path === '/admin/dashboard' ? '' : 'text-zinc-700 hover:bg-zinc-100'"
+        >
+          Dashboard
+        </RouterLink>
+        <RouterLink
           to="/admin/subjects"
           class="px-4 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap shrink-0"
           active-class="bg-zinc-800 text-white"
