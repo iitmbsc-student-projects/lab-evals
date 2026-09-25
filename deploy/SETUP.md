@@ -17,6 +17,14 @@ All secrets live in Google Secret Manager. Cloud Run mounts them as env vars
 via `--set-secrets`. The frontend build pulls `VITE_*` secrets at build time
 and bakes them into the static bundle.
 
+Non-secret Cloud Run env vars are set inline by `backend/cloudbuild.yaml`
+(`--set-env-vars`). Besides `ENV`, `JWT_ALGORITHM`, `ADMIN_EMAIL`,
+`ADMIN_NAME` and `FRONTEND_ORIGIN`, that includes the token lifetimes:
+`JWT_EXPIRES_MINUTES=30` (access token, silently refreshed by the frontend)
+and `REFRESH_TOKEN_EXPIRES_DAYS=7` — the refresh window is the forced
+re-login interval, so raising or lowering it changes how often users must
+sign in with Google again.
+
 ---
 
 ## Variables
