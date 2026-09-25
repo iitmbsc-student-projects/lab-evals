@@ -5,9 +5,12 @@
 <template>
   <div class="space-y-6">
     <!-- Session header -->
-    <div>
-      <h2 class="text-2xl font-bold text-zinc-900">{{ session.subject_name }}</h2>
-      <p class="text-sm text-zinc-500 mt-0.5">{{ formatDate(session.date) }}</p>
+    <div class="flex items-start justify-between gap-4">
+      <div>
+        <h2 class="text-2xl font-bold text-zinc-900">{{ session.subject_name }}</h2>
+        <p class="text-sm text-zinc-500 mt-0.5">{{ formatDate(session.date) }}</p>
+      </div>
+      <AppPollStatus :text="pollStatus" class="mt-1" />
     </div>
 
     <!-- Closed banner -->
@@ -38,6 +41,8 @@
               :options="studentOptions"
               required
               :disabled="!session.accepting_evaluations"
+              @open="pausePolling"
+              @close="resumePolling"
             />
             <AppSelect
               v-model="form.question_id"
@@ -191,7 +196,9 @@ import AppTable from '../common/AppTable.vue'
 import AppCombobox from '../common/AppCombobox.vue'
 import AppSelect from '../common/AppSelect.vue'
 import AppInput from '../common/AppInput.vue'
+import AppPollStatus from '../common/AppPollStatus.vue'
 import { useAsyncTask } from '../../composables/useAsync'
+import { usePolling, type PollContext } from '../../composables/usePolling'
 import { formatDate } from '@/utils/date'
 import { apiErrorMessage } from '@/utils/errors'
 
@@ -271,6 +278,7 @@ function questionText(id: number): string {
 
 async function handleCreate() {
   if (!canSubmit.value) return
+  polling.invalidate()
   createError.value = ''
   updateError.value = ''
   deleteError.value = ''
@@ -313,6 +321,7 @@ function cancelEdit() {
 
 async function handleUpdate(id: number) {
   if (editForm.value.marking === null) return
+  polling.invalidate()
   createError.value = ''
   updateError.value = ''
   deleteError.value = ''
@@ -335,6 +344,10 @@ async function handleUpdate(id: number) {
 }
 
 async function handleDelete(id: number) {
+  if (!confirm('Are you sure you want to delete this evaluation? This action cannot be undone.')) {
+    return
+  }
+  polling.invalidate()
   createError.value = ''
   updateError.value = ''
   deleteError.value = ''
@@ -365,23 +378,80 @@ async function refreshCoverage() {
   }
 }
 
+// The roster and the question bank do not change on a grading timescale, so
+// they load once on mount rather than on every poll tick.
+async function loadStatic() {
+  const [s, q] = await Promise.all([
+    getStudents(props.session.lab_session_id),
+    getQuestions(props.session.lab_session_id),
+  ])
+  students.value = s
+  questions.value = q
+}
+
+// The live half: what other TAs have graded. This is the poll target.
+async function loadLive(ctx?: PollContext) {
+  const [e, c] = await Promise.all([
+    getEvaluations(props.session.lab_session_id, ctx?.signal),
+    getCoverage(props.session.lab_session_id, ctx?.signal),
+  ])
+  if (ctx?.isStale()) return
+  evaluations.value = e
+  coverage.value = c
+}
+
+// If the selected student leaves the roster, `AppCombobox` renders an empty
+// input while `student_id` still points at them — the TA would submit against
+// an invisible student. Clear the field and say why.
+watch(studentOptions, (options) => {
+  const selected = form.value.student_id
+  if (selected === null) return
+  if (options.some((o) => o.value === selected)) return
+  form.value.student_id = null
+  createError.value = 'The selected student is no longer on this session roster.'
+})
+
 const {
   loading,
   error,
   run: load,
 } = useAsyncTask(
   async () => {
-    const [s, q, e, c] = await Promise.all([
-      getStudents(props.session.lab_session_id),
-      getQuestions(props.session.lab_session_id),
-      getEvaluations(props.session.lab_session_id),
-      getCoverage(props.session.lab_session_id),
-    ])
-    students.value = s
-    questions.value = q
-    evaluations.value = e
-    coverage.value = c
+    await Promise.all([loadStatic(), loadLive()])
   },
   { immediate: true },
 )
+
+// Several TAs grade one session at the same time, so coverage (which questions
+// are still free) and the evaluation list have to keep up. Suspended whenever
+// the user is committed to a form: an inline edit, a request in flight, or a
+// create form filled past the student picker — a refetch there would either
+// discard their typing or shrink `availableQuestions` under their choice.
+//
+// Polls the raw loader, not the task's refresh(): usePolling swallows a failed
+// tick, where useAsyncTask would publish it into `error` and blank the panel
+// behind a banner.
+const polling = usePolling(loadLive, {
+  paused: () =>
+    editingId.value !== null ||
+    creating.value ||
+    saving.value ||
+    deleting.value !== null ||
+    // Picking a student is already commitment: from here on the question list
+    // is filtered for that student and must not shift under the TA.
+    form.value.student_id !== null ||
+    form.value.question_id !== null ||
+    form.value.marking !== null ||
+    form.value.remarks !== '',
+})
+const pollStatus = polling.statusText
+
+// The student picker's dropdown is open state no `paused` getter can see.
+function pausePolling() {
+  polling.pause()
+}
+
+function resumePolling() {
+  polling.resume()
+}
 </script>

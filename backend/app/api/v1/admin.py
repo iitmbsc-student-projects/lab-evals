@@ -529,7 +529,8 @@ def update_lab_session(
             )
         before = snapshot(db_obj)
         db_obj.date = session.date
-        db_obj.accepting_evaluations = session.accepting_evaluations
+        if session.accepting_evaluations is not None:
+            db_obj.accepting_evaluations = session.accepting_evaluations
         audit.record(
             db,
             action="lab_session.update",
@@ -807,7 +808,10 @@ def _validate_evaluation_refs(db, evaluation) -> None:
 def list_evaluations():
     db = SessionLocal()
     try:
-        return db.query(Evaluation).all()
+        # Explicit order: Postgres gives no ordering guarantee and heap
+        # order shifts on UPDATE, so without this a background refetch can
+        # reorder rows under the user's cursor.
+        return db.query(Evaluation).order_by(Evaluation.id).all()
     finally:
         db.close()
 

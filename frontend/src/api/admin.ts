@@ -46,9 +46,16 @@ export const updateUser = async (id: number, body: UserUpdate) =>
 export const deleteUser = async (id: number) => (await api.delete(`/admin/users/${id}`)).data
 
 // Lab Sessions
-export const getLabSessions = async (subjectId?: number): Promise<LabSession[]> =>
-  (await api.get('/admin/lab-sessions', { params: subjectId ? { subject_id: subjectId } : {} }))
-    .data
+export const getLabSessions = async (
+  subjectId?: number,
+  signal?: AbortSignal,
+): Promise<LabSession[]> =>
+  (
+    await api.get('/admin/lab-sessions', {
+      params: subjectId ? { subject_id: subjectId } : {},
+      signal,
+    })
+  ).data
 export const getLabSession = async (id: number): Promise<LabSession> =>
   (await api.get(`/admin/lab-sessions/${id}`)).data
 export const createLabSession = async (body: LabSessionCreate): Promise<LabSession> =>
@@ -83,8 +90,8 @@ export const deleteSessionAssignment = async (id: number) =>
   (await api.delete(`/admin/session-assignments/${id}`)).data
 
 // Evaluations
-export const getEvaluations = async (): Promise<EvaluationResponse[]> =>
-  (await api.get('/admin/evaluations')).data
+export const getEvaluations = async (signal?: AbortSignal): Promise<EvaluationResponse[]> =>
+  (await api.get('/admin/evaluations', { signal })).data
 export const createEvaluation = async (body: EvaluationUpdate) =>
   (await api.post('/admin/evaluations/', body)).data
 export const updateEvaluation = async (id: number, body: EvaluationUpdate) =>

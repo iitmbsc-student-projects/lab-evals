@@ -71,7 +71,10 @@ export interface LabSessionCreate {
 
 export interface LabSessionUpdate {
   date: string
-  accepting_evaluations: boolean
+  // Omitted by the admin UI: open/closed is changed through
+  // PATCH /lab-sessions/{id}/accepting, so a date edit made from a stale row
+  // cannot silently re-open a session another admin closed.
+  accepting_evaluations?: boolean
 }
 
 export interface SessionAssignment {

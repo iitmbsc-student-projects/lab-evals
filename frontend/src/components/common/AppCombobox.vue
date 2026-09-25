@@ -73,7 +73,7 @@
             option.value === modelValue ? 'font-medium text-zinc-900' : 'text-zinc-700',
           ]"
           @mousedown.prevent="selectOption(option)"
-          @mouseenter="highlightedIndex = index"
+          @mouseenter="setHighlight(index)"
         >
           {{ option.label }}
         </li>
@@ -109,6 +109,10 @@ const props = defineProps<{
 const emit = defineEmits<{
   'update:modelValue': [value: string | number | null]
   change: []
+  // Emitted when the dropdown opens/closes, so a parent that refreshes its
+  // `options` in the background can suspend that while the list is open.
+  open: []
+  close: []
 }>()
 
 const rootEl = ref<HTMLElement | null>(null)
@@ -117,6 +121,9 @@ const listEl = ref<HTMLElement | null>(null)
 const isOpen = ref(false)
 const query = ref('')
 const highlightedIndex = ref(0)
+// The *value* under the highlight, kept alongside the index so the highlight
+// can be re-derived when `options` changes underneath an open dropdown.
+const highlightedValue = ref<string | number | null>(null)
 
 const selectedOption = computed(() => props.options.find((o) => o.value === props.modelValue))
 const selectedLabel = computed(() => selectedOption.value?.label ?? '')
@@ -138,19 +145,31 @@ const inputClasses = computed(() => {
   return `${base} border-zinc-300 focus:border-zinc-400 focus:ring-zinc-400`
 })
 
+// Single entry point for moving the highlight: keeps `highlightedValue` in
+// step with the index so an options change can restore the same option.
+function setHighlight(index: number) {
+  highlightedIndex.value = index
+  highlightedValue.value = filteredOptions.value[index]?.value ?? null
+}
+
+function highlightSelected() {
+  setHighlight(Math.max(filteredOptions.value.findIndex((o) => o.value === props.modelValue), 0))
+}
+
 function open() {
   if (props.disabled) return
+  const wasOpen = isOpen.value
   isOpen.value = true
   query.value = ''
-  highlightedIndex.value = Math.max(
-    filteredOptions.value.findIndex((o) => o.value === props.modelValue),
-    0,
-  )
+  highlightSelected()
+  if (!wasOpen) emit('open')
 }
 
 function close() {
+  const wasOpen = isOpen.value
   isOpen.value = false
   query.value = ''
+  if (wasOpen) emit('close')
 }
 
 function onFocus() {
@@ -160,7 +179,7 @@ function onFocus() {
 function onInput(event: Event) {
   isOpen.value = true
   query.value = (event.target as HTMLInputElement).value
-  highlightedIndex.value = 0
+  setHighlight(0)
 }
 
 function selectOption(option: ComboboxOption) {
@@ -186,15 +205,12 @@ function onKeydown(event: KeyboardEvent) {
         return
       }
       if (filteredOptions.value.length > 0) {
-        highlightedIndex.value = Math.min(
-          highlightedIndex.value + 1,
-          filteredOptions.value.length - 1,
-        )
+        setHighlight(Math.min(highlightedIndex.value + 1, filteredOptions.value.length - 1))
       }
       break
     case 'ArrowUp':
       event.preventDefault()
-      highlightedIndex.value = Math.max(highlightedIndex.value - 1, 0)
+      setHighlight(Math.max(highlightedIndex.value - 1, 0))
       break
     case 'Enter': {
       if (!isOpen.value) return
@@ -230,6 +246,24 @@ function onDocumentMousedown(event: MouseEvent) {
   }
 }
 
+// `highlightedIndex` is a bare position in `filteredOptions`; if the parent
+// replaces `options` while the list is open, that position silently points at
+// a different person and Enter would pick the wrong one. Re-derive it from the
+// value that was highlighted (falling back to the selection, then the top).
+watch(
+  () => props.options,
+  () => {
+    if (!isOpen.value) return
+    const index = filteredOptions.value.findIndex((o) => o.value === highlightedValue.value)
+    if (index !== -1) setHighlight(index)
+    else highlightSelected()
+  },
+)
+
 onMounted(() => document.addEventListener('mousedown', onDocumentMousedown))
-onBeforeUnmount(() => document.removeEventListener('mousedown', onDocumentMousedown))
+onBeforeUnmount(() => {
+  document.removeEventListener('mousedown', onDocumentMousedown)
+  // Unmounting while open would otherwise leave a parent's pause unmatched.
+  close()
+})
 </script>

@@ -7,5 +7,8 @@ export const getQuestions = async (sessionId: number): Promise<QuestionResponse[
   (await api.get(`/student/sessions/${sessionId}/questions`)).data
 
 // Get own evaluations for a session (presence-only, no marks)
-export const getEvaluations = async (sessionId: number): Promise<StudentEvaluationResponse[]> =>
-  (await api.get(`/student/sessions/${sessionId}/evaluations`)).data
+export const getEvaluations = async (
+  sessionId: number,
+  signal?: AbortSignal,
+): Promise<StudentEvaluationResponse[]> =>
+  (await api.get(`/student/sessions/${sessionId}/evaluations`, { signal })).data

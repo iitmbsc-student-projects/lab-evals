@@ -6,9 +6,12 @@
 <template>
   <div class="space-y-6">
     <!-- Session header -->
-    <div>
-      <h2 class="text-2xl font-bold text-zinc-900">{{ session.subject_name }}</h2>
-      <p class="text-sm text-zinc-500 mt-0.5">{{ formatDate(session.date) }}</p>
+    <div class="flex items-start justify-between gap-4">
+      <div>
+        <h2 class="text-2xl font-bold text-zinc-900">{{ session.subject_name }}</h2>
+        <p class="text-sm text-zinc-500 mt-0.5">{{ formatDate(session.date) }}</p>
+      </div>
+      <AppPollStatus :text="pollStatus" class="mt-1" />
     </div>
 
     <!-- Closed banner -->
@@ -59,7 +62,9 @@ import { getQuestions, getEvaluations } from '../../api/student'
 import AppAsyncSection from '../common/AppAsyncSection.vue'
 import AppTable from '../common/AppTable.vue'
 import AppBadge from '../common/AppBadge.vue'
+import AppPollStatus from '../common/AppPollStatus.vue'
 import { useAsyncTask } from '../../composables/useAsync'
+import { usePolling, type PollContext } from '../../composables/usePolling'
 import { formatDate } from '@/utils/date'
 
 const props = defineProps<{ session: MySession }>()
@@ -71,19 +76,35 @@ function isEvaluated(questionId: number): boolean {
   return evaluations.value.some((e) => e.question_id === questionId)
 }
 
+// The question set for a session does not change while the page is open, so
+// it is fetched once on mount (and again after an error) rather than polled.
+async function loadQuestions() {
+  questions.value = await getQuestions(props.session.lab_session_id)
+}
+
+// The live half: which questions have been graded yet. This is the poll
+// target — one request per tick.
+async function loadEvaluations(ctx?: PollContext) {
+  const data = await getEvaluations(props.session.lab_session_id, ctx?.signal)
+  if (ctx?.isStale()) return
+  evaluations.value = data
+}
+
 const {
   loading,
   error,
   run: load,
 } = useAsyncTask(
   async () => {
-    const [q, e] = await Promise.all([
-      getQuestions(props.session.lab_session_id),
-      getEvaluations(props.session.lab_session_id),
-    ])
-    questions.value = q
-    evaluations.value = e
+    await Promise.all([loadQuestions(), loadEvaluations()])
   },
   { immediate: true },
 )
+
+// A student watches this table for their evaluations to land; the panel is
+// read-only, so nothing can be lost to a background refresh.
+//
+// Polls the raw loader rather than the task's refresh(): usePolling swallows a
+// failed tick, where useAsyncTask would surface it as a banner over good data.
+const { statusText: pollStatus } = usePolling(loadEvaluations)
 </script>

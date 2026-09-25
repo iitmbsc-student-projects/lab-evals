@@ -18,12 +18,18 @@ export const getQuestions = async (sessionId: number): Promise<QuestionResponse[
   (await api.get(`/ta/sessions/${sessionId}/questions`)).data
 
 // List evaluations for a session
-export const getEvaluations = async (sessionId: number): Promise<TAEvaluationResponse[]> =>
-  (await api.get(`/ta/sessions/${sessionId}/evaluations`)).data
+export const getEvaluations = async (
+  sessionId: number,
+  signal?: AbortSignal,
+): Promise<TAEvaluationResponse[]> =>
+  (await api.get(`/ta/sessions/${sessionId}/evaluations`, { signal })).data
 
 // List every evaluated (student, question) pair on a session, across all TAs
-export const getCoverage = async (sessionId: number): Promise<TAEvaluationCoverage[]> =>
-  (await api.get(`/ta/sessions/${sessionId}/coverage`)).data
+export const getCoverage = async (
+  sessionId: number,
+  signal?: AbortSignal,
+): Promise<TAEvaluationCoverage[]> =>
+  (await api.get(`/ta/sessions/${sessionId}/coverage`, { signal })).data
 
 // Create evaluation for a session
 export const createEvaluation = async (

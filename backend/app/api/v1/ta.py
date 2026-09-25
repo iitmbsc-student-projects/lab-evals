@@ -122,6 +122,7 @@ def list_evaluations(
                 Evaluation.lab_session_id == lab_session_id,
                 Evaluation.ta_id == current_user.id,
             )
+            .order_by(Evaluation.id)
             .all()
         )
     finally:
@@ -150,6 +151,7 @@ def list_coverage(
         return (
             db.query(Evaluation)
             .filter(Evaluation.lab_session_id == lab_session_id)
+            .order_by(Evaluation.id)
             .all()
         )
     finally:

@@ -18,7 +18,10 @@ class LabSessionCreate(BaseModel):
 
 class LabSessionUpdate(BaseModel):
     date: date
-    accepting_evaluations: bool
+    # Optional: the admin UI edits the date only and leaves the open/closed
+    # state to PATCH /lab-sessions/{id}/accepting, so a date edit made from
+    # a stale row cannot silently re-open a session another admin closed.
+    accepting_evaluations: bool | None = None
 
     class Config:
         extra = "forbid"

@@ -8,6 +8,7 @@
       <div>
         <h2 class="text-2xl font-bold text-zinc-900">Evaluations</h2>
         <p class="text-sm text-zinc-600 mt-1">Manage all evaluations (admin override)</p>
+        <AppPollStatus :text="pollStatus" class="mt-1" />
       </div>
       <div class="flex gap-2 self-start sm:self-auto shrink-0">
         <AppButton
@@ -236,6 +237,7 @@ import AppCombobox from '../../components/common/AppCombobox.vue'
 import AppAsyncSection from '../../components/common/AppAsyncSection.vue'
 import AppSpinner from '../../components/common/AppSpinner.vue'
 import AppTable from '../../components/common/AppTable.vue'
+import AppPollStatus from '../../components/common/AppPollStatus.vue'
 import {
   getEvaluations,
   createEvaluation,
@@ -257,6 +259,7 @@ import type {
   SessionAssignment,
 } from '../../types/api'
 import { useAsyncAction, useAsyncTask } from '../../composables/useAsync'
+import { usePolling, type PollContext } from '../../composables/usePolling'
 
 const evaluations = ref<EvaluationResponse[]>([])
 const users = ref<UserResponse[]>([])
@@ -280,6 +283,26 @@ const filterSubjectId = ref<number | string>('')
 const sessionRoster = ref<SessionAssignment[]>([])
 let latestRosterFetch = 0
 
+// Users, questions, subjects and lab sessions are lookup tables: they change
+// when an admin edits them, not while this page sits open. Fetching them on
+// mount (and after a mutation) keeps the poll down to the one list that is
+// actually live.
+async function loadLookups() {
+  ;[users.value, questions.value, subjects.value, labSessions.value] = await Promise.all([
+    getUsers(),
+    getQuestions(),
+    getSubjects(),
+    getLabSessions(),
+  ])
+}
+
+// The live list, and the only thing the poll refetches.
+async function loadEvaluations(ctx?: PollContext) {
+  const rows = await getEvaluations(ctx?.signal)
+  if (ctx?.isStale()) return
+  evaluations.value = rows
+}
+
 const {
   loading,
   error: loadError,
@@ -287,17 +310,27 @@ const {
   refresh,
 } = useAsyncTask(
   async () => {
-    ;[evaluations.value, users.value, questions.value, subjects.value, labSessions.value] =
-      await Promise.all([
-        getEvaluations(),
-        getUsers(),
-        getQuestions(),
-        getSubjects(),
-        getLabSessions(),
-      ])
+    await Promise.all([loadEvaluations(), loadLookups()])
   },
   { immediate: true },
 )
+
+// Evaluations arrive from TAs while this page is open. Suspended while the
+// create modal or an inline edit row is in use, so a refresh cannot swap the
+// list out from under half-entered marks and remarks.
+//
+// 90s rather than the 30s default: GET /admin/evaluations returns every
+// evaluation ever recorded, unfiltered and unpaginated, so this is by far the
+// most expensive poll in the app, and an admin watching marks arrive is not
+// doing anything second-sensitive.
+//
+// Polls the raw loader rather than the task's refresh(): usePolling swallows a
+// failed tick, where useAsyncTask would paint an error banner over a table
+// that is still perfectly good.
+const { statusText: pollStatus, invalidate: invalidatePoll } = usePolling(loadEvaluations, {
+  intervalMs: 90_000,
+  paused: () => showCreate.value || editId.value !== null,
+})
 
 const {
   loading: rosterLoading,
@@ -429,6 +462,7 @@ function openCreate() {
 }
 
 async function createEvaluationHandler() {
+  invalidatePoll()
   const labSessionId = newLabSessionId.value
   const studentId = newStudentId.value
   const questionId = newQuestionId.value
@@ -463,6 +497,7 @@ function startEdit(evaluation: EvaluationResponse) {
 }
 
 async function saveEdit(id: number) {
+  invalidatePoll()
   const ev = evaluations.value.find((e) => e.id === id)
   if (!ev) return
   await runRowAction(async () => {
@@ -488,6 +523,7 @@ function cancelEdit() {
 }
 
 async function deleteEvaluationHandler(id: number) {
+  invalidatePoll()
   if (!confirm('Are you sure you want to delete this evaluation? This action cannot be undone.')) {
     return
   }

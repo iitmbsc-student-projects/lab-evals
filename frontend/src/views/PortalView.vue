@@ -4,7 +4,10 @@
 -->
 <template>
   <div>
-    <h2 class="text-2xl font-bold text-zinc-900 mb-6">My Sessions</h2>
+    <div class="flex items-baseline justify-between gap-4 mb-6">
+      <h2 class="text-2xl font-bold text-zinc-900">My Sessions</h2>
+      <AppPollStatus :text="pollStatus" />
+    </div>
 
     <AppAsyncSection
       :loading="loading"
@@ -67,20 +70,33 @@ import { getMySessions } from '../api/auth'
 import type { MySession } from '../types/api'
 import AppAsyncSection from '../components/common/AppAsyncSection.vue'
 import AppBadge from '../components/common/AppBadge.vue'
+import AppPollStatus from '../components/common/AppPollStatus.vue'
 import { useAsyncTask } from '../composables/useAsync'
+import { usePolling, type PollContext } from '../composables/usePolling'
 import { formatDate } from '@/utils/date'
 
 const router = useRouter()
 const sessions = ref<MySession[]>([])
 
+// `ctx` is present only on a poll tick: it carries the abort signal and the
+// staleness check that keeps a late tick from overwriting fresher state.
+async function loadSessions(ctx?: PollContext) {
+  const data = await getMySessions(ctx?.signal)
+  if (ctx?.isStale()) return
+  sessions.value = data
+}
+
 const {
   loading,
   error,
   run: load,
-} = useAsyncTask(
-  async () => {
-    sessions.value = await getMySessions()
-  },
-  { immediate: true },
-)
+} = useAsyncTask(() => loadSessions(), { immediate: true })
+
+// Sessions open and close while this list is on screen; nothing here is
+// editable, so a background refresh is always safe.
+//
+// The poll drives the raw loader rather than the task's refresh(): usePolling
+// swallows a failed tick, whereas useAsyncTask would publish it into `error`
+// and paint a banner over data that is still good.
+const { statusText: pollStatus } = usePolling(loadSessions)
 </script>
