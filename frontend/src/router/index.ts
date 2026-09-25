@@ -33,6 +33,8 @@ const routes = [
     component: () => import('../components/layout/AdminLayout.vue'),
     meta: { admin: true },
     children: [
+      { path: '', redirect: '/admin/subjects' },
+      { path: 'dashboard', component: () => import('../views/admin/DashboardView.vue') },
       { path: 'subjects', component: () => import('../views/admin/SubjectsView.vue') },
       { path: 'questions', component: () => import('../views/admin/QuestionsView.vue') },
       { path: 'users', component: () => import('../views/admin/UsersView.vue') },
