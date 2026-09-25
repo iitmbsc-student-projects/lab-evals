@@ -12,7 +12,7 @@ export async function fetchMe(): Promise<UserResponse> {
   return data
 }
 
-export async function getMySessions(): Promise<MySession[]> {
-  const { data } = await api.get<MySession[]>('/user/me/sessions')
+export async function getMySessions(signal?: AbortSignal): Promise<MySession[]> {
+  const { data } = await api.get<MySession[]>('/user/me/sessions', { signal })
   return data
 }

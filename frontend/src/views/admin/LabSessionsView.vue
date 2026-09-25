@@ -8,6 +8,7 @@
       <div>
         <h2 class="text-2xl font-bold text-zinc-900">Lab Sessions</h2>
         <p class="text-sm text-zinc-600 mt-1">Manage lab sessions per subject</p>
+        <AppPollStatus :text="pollStatus" class="mt-1" />
       </div>
       <AppButton class="self-start sm:self-auto shrink-0" @click="openCreate"
         >Add Lab Session</AppButton
@@ -72,16 +73,12 @@
               class="w-full px-3 py-2 border border-zinc-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400"
             />
           </td>
-          <td v-if="editId !== session.id">
+          <!-- Always the live value, in edit mode too: open/closed is changed
+               through its own toggle below, never carried along by a date edit. -->
+          <td>
             <AppBadge :variant="session.accepting_evaluations ? 'success' : 'default'">
               {{ session.accepting_evaluations ? 'Open' : 'Closed' }}
             </AppBadge>
-          </td>
-          <td v-else>
-            <label class="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" v-model="editAccepting" class="w-4 h-4 rounded" />
-              <span class="text-sm text-zinc-700">Open</span>
-            </label>
           </td>
           <td>
             <div class="flex flex-wrap gap-2">
@@ -212,6 +209,8 @@ import {
 } from '../../api/admin'
 import type { LabSession, SubjectResponse } from '../../types/api'
 import { useAsyncAction, useAsyncTask } from '../../composables/useAsync'
+import { usePolling, type PollContext } from '../../composables/usePolling'
+import AppPollStatus from '../../components/common/AppPollStatus.vue'
 
 const sessions = ref<LabSession[]>([])
 const subjects = ref<SubjectResponse[]>([])
@@ -222,7 +221,6 @@ const newDate = ref('')
 const newAccepting = ref(false)
 const editId = ref<number | null>(null)
 const editDate = ref('')
-const editAccepting = ref(false)
 
 const filteredSessions = computed(() => {
   if (!filterSubjectId.value) return sessions.value
@@ -233,17 +231,30 @@ function getSubjectName(id: number) {
   return subjects.value.find((s) => s.id === id)?.name || ''
 }
 
+async function loadSessions(ctx?: PollContext) {
+  const [s, sub] = await Promise.all([getLabSessions(undefined, ctx?.signal), getSubjects()])
+  if (ctx?.isStale()) return
+  sessions.value = s
+  subjects.value = sub
+}
+
 const {
   loading,
   error: loadError,
   run: load,
   refresh,
-} = useAsyncTask(
-  async () => {
-    ;[sessions.value, subjects.value] = await Promise.all([getLabSessions(), getSubjects()])
-  },
-  { immediate: true },
-)
+} = useAsyncTask(() => loadSessions(), { immediate: true })
+
+// `accepting_evaluations` gates whether TAs can grade at all, and more than
+// one admin may be working during a lab, so a stale Open/Closed badge here is
+// worth correcting. Suspended while a create modal or an inline edit row is
+// open, so a refresh cannot swap the table out from under it.
+//
+// Polls the raw loader, not the task's refresh(): a failed background tick is
+// swallowed rather than replacing the table with an error.
+const { statusText: pollStatus, invalidate: invalidatePoll } = usePolling(loadSessions, {
+  paused: () => showCreate.value || editId.value !== null,
+})
 
 // Create is its own in-flight state (the modal button); the row actions
 // (edit / open-close / delete) share one, as only one can run at a time.
@@ -261,6 +272,7 @@ function openCreate() {
 }
 
 async function createSessionHandler() {
+  invalidatePoll()
   const subjectId = newSubjectId.value
   if (!subjectId || !newDate.value) return
   await runCreate(async () => {
@@ -281,19 +293,18 @@ async function createSessionHandler() {
 function startEdit(session: LabSession) {
   editId.value = session.id
   editDate.value = session.date
-  editAccepting.value = session.accepting_evaluations
 }
 
 async function saveEdit(id: number) {
+  invalidatePoll()
   if (!editDate.value) return
   await runRowAction(async () => {
-    await updateLabSession(id, {
-      date: editDate.value,
-      accepting_evaluations: editAccepting.value,
-    })
+    // Date only. Sending `accepting_evaluations` here would overwrite it with
+    // the value captured at startEdit, silently re-opening a session another
+    // admin closed in the meantime.
+    await updateLabSession(id, { date: editDate.value })
     editId.value = null
     editDate.value = ''
-    editAccepting.value = false
   }, `save:${id}`)
   if (!actionError.value) await refresh()
 }
@@ -301,10 +312,10 @@ async function saveEdit(id: number) {
 function cancelEdit() {
   editId.value = null
   editDate.value = ''
-  editAccepting.value = false
 }
 
 async function toggleAccepting(session: LabSession) {
+  invalidatePoll()
   await runRowAction(async () => {
     await setLabSessionAccepting(session.id, !session.accepting_evaluations)
   }, `toggle:${session.id}`)
@@ -312,6 +323,7 @@ async function toggleAccepting(session: LabSession) {
 }
 
 async function deleteSessionHandler(id: number) {
+  invalidatePoll()
   if (
     !confirm('Are you sure you want to delete this lab session? This action cannot be undone.')
   ) {
