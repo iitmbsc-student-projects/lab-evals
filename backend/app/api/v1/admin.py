@@ -807,7 +807,15 @@ def _validate_evaluation_refs(db, evaluation) -> None:
 def list_evaluations():
     db = SessionLocal()
     try:
-        return db.query(Evaluation).all()
+        # Deterministic, total order: most recent slot first, newest
+        # evaluation first within a slot. The id tie-break keeps the
+        # order stable so rows don't jitter between reloads.
+        return (
+            db.query(Evaluation)
+            .join(LabSession, Evaluation.lab_session_id == LabSession.id)
+            .order_by(LabSession.date.desc(), Evaluation.id.desc())
+            .all()
+        )
     finally:
         db.close()
 
