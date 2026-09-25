@@ -22,7 +22,7 @@
         class="max-w-xs"
         :disabled="loading"
       >
-        <option :value="null">All Subjects</option>
+        <option value="">All Subjects</option>
         <option v-for="subject in subjects" :key="subject.id" :value="subject.id">
           {{ subject.name }}
         </option>
