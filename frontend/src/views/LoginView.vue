@@ -113,6 +113,7 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { loginWithIdToken, fetchMe } from '../api/auth'
 import { useAuthStore } from '../store/auth'
+import { apiErrorMessage } from '../utils/errors'
 
 const loading = ref(false)
 const error = ref('')
@@ -141,16 +142,17 @@ onMounted(() => {
     error.value = ''
 
     try {
-      const { access_token } = await loginWithIdToken(idToken)
+      const tokens = await loginWithIdToken(idToken)
 
-      auth.token = access_token
+      // Load-bearing: storing the tokens first is what lets fetchMe()
+      // carry an Authorization header.
+      auth.setTokens(tokens)
       const user = await fetchMe()
-      auth.setAuth(access_token, user)
+      auth.setAuth(user)
 
       router.replace('/')
     } catch (e: unknown) {
-      console.log(e)
-      error.value = e instanceof Error ? e.message : 'Login failed. Please try again.'
+      error.value = apiErrorMessage(e, 'Login failed. Please try again.')
       auth.clearAuth()
     } finally {
       loading.value = false
